@@ -1,2 +1,2 @@
-# plt-stat
+# pltstat
 Statistics visualization library
