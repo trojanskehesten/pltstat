@@ -4,7 +4,7 @@ __all__ = [
     "__version__",
     "corr_methods",
     "cm",
-    "clock_plots",
+    "circle",
     "in_out",
     "nfeats",
     "singlefeats",
