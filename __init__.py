@@ -6,7 +6,7 @@ __all__ = [
     "cm",
     "circle",
     "in_out",
-    "singlefeat.py",
+    "singlefeat",
     "twofeats",
     "nfeats",
 ]
