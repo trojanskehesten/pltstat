@@ -78,7 +78,7 @@ def crosstab(
             # Python Scipy realization (only 2x2 table):
             # g, p_value = _fisher_exact(crosstab_df)
             # R language Stats realization (MxN table):
-            p_value = _stats_r.fisher_test(crosstab_df.values)[0][0]
+            p_value = _stats_r.fisher_test(crosstab_df.values, conf_int=True, conf_level=alpha)[0][0]
         else:
             test_type = "$chi^2$"
             g, p_value = chi2_contingency(crosstab_df)[:2]
