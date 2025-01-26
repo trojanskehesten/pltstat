@@ -63,6 +63,16 @@ tf.boxplot(df, "gender", "age")
 - **`__init__.py`**
   - Marks the directory as a Python package. This file allows you to import modules from the `pltstat` package.
 
+- **`singlefeats.py`**
+  - Dedicated to the analysis and visualization of single-variable features, including plotting functions such as pie charts, count plots, and histograms.
+
+- **`twofeats.py`**
+  - Provides tools for analyzing interactions between two features. Includes functions for creating crosstabs, computing correlations, and visualizing results using violin plots, boxplots, and distribution box plots. These functions also display p-values and other statistical metrics to summarize relationships between the two features.
+
+- **`nfeats.py`**
+  - Provides tools for analyzing relationships between multiple features.  
+  Includes visualization functions for analyzing missing data, comparing distributions, and visualizing dimensionality reductions. Additionally, it provides methods for creating heatmaps that display correlations and p-values, including Spearman's correlation, Mann-Whitney p-values, and Phik correlations.
+
 - **`circle.py`**
   - Contains functions and methods related to circular statistical visualizations, such as radar charts or circular histograms.
 
@@ -74,15 +84,6 @@ tf.boxplot(df, "gender", "age")
 
 - **`in_out.py`**
   - Provides utilities for reading, writing, and preprocessing input and output data files.
-
-- **`nfeats.py`**
-  - Includes visualization functions for analyzing missing data, comparing distributions, and visualizing dimensionality reductions. Additionally, it provides methods for creating heatmaps that display correlations and p-values, including Spearman's correlation, Mann-Whitney p-values, and Phik correlations.
-
-- **`singlefeats.py`**
-  - Dedicated to the analysis and visualization of single-variable features, including plotting functions such as pie charts, count plots, and histograms.
-
-- **`twofeats.py`**
-  - Provides tools for analyzing interactions between two features. Includes functions for creating crosstabs, computing correlations, and visualizing results using violin plots, boxplots, and distribution box plots. These functions also display p-values and other statistical metrics to summarize relationships between the two features.
 
 ### Other Files
 
