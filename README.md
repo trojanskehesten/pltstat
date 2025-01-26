@@ -60,40 +60,40 @@ tf.boxplot(df, "gender", "age")
 
 ### Python Modules
 
-- **`__init__.py`**
+- **[`__init__.py`](__init__.py)**
   - Marks the directory as a Python package. This file allows you to import modules from the `pltstat` package.
 
-- **`singlefeats.py`**
+- **[`singlefeats.py`](singlefeats.py)**
   - Dedicated to the analysis and visualization of single-variable features, including plotting functions such as pie charts, count plots, and histograms.
 
-- **`twofeats.py`**
+- **[`twofeats.py`](twofeats.py)**
   - Provides tools for analyzing interactions between two features. Includes functions for creating crosstabs, computing correlations, and visualizing results using violin plots, boxplots, and distribution box plots. These functions also display p-values and other statistical metrics to summarize relationships between the two features.
 
-- **`nfeats.py`**
+- **[`multfeats.py`]()**
   - Provides tools for analyzing relationships between multiple features.  
   Includes visualization functions for analyzing missing data, comparing distributions, and visualizing dimensionality reductions. Additionally, it provides methods for creating heatmaps that display correlations and p-values, including Spearman's correlation, Mann-Whitney p-values, and Phik correlations.
 
-- **`circle.py`**
+- **[`circle.py`](circle.py)**
   - Contains functions and methods related to circular statistical visualizations, such as radar charts or circular histograms.
 
-- **`cm.py`**
+- **[`cm.py`](cm.py)**
   - Contains custom colormap utilities for visualizations, such as rendering correlation matrices or creating two-colored maps for p-values with a threshold (e.g., alpha).
 
-- **`corr_methods.py`**
+- **[`corr_methods.py`](corr_methods.py)**
   - Includes methods for calculating correlation matrices and related statistical relationships.
 
-- **`in_out.py`**
+- **[`in_out.py`](in_out.py)**
   - Provides utilities for reading, writing, and preprocessing input and output data files.
 
 ### Other Files
 
-- **`.gitignore`**
+- **[`.gitignore`](.gitignore)**
   - Specifies intentionally untracked files to ignore in the repository, such as virtual environments and temporary files.
 
 - **`README.md`**
   - This file provides an overview of the project, including file descriptions and usage instructions.
 
-- **`requirements.txt`**
+- **[`requirements.txt`](requirements.txt)**
   - Lists the Python dependencies required to run the library. Install them using:
     ```bash
     pip install -r requirements.txt

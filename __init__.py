@@ -8,5 +8,5 @@ __all__ = [
     "in_out",
     "singlefeat",
     "twofeats",
-    "nfeats",
+    "multfeats",
 ]
