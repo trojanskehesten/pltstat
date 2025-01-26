@@ -11,7 +11,8 @@ _N_TICKS = 24
 
 
 def rad2val(a, high=_HIGH):
-    """Convert values ``a`` from radians to measures with the highest value ``high``
+    """
+    Convert values ``a`` from radians to measures with the highest value ``high``
 
     Parameters
     ----------
@@ -40,31 +41,32 @@ def rad2val(a, high=_HIGH):
 
 
 def val2rad(a, high=_HIGH):
-    """Convert values `a` from measures with the highest value `high` to radians
+    """
+    Convert values `a` from measures with the highest value `high` to radians
 
-        Parameters
-        ----------
-        a : array_like
-            Input array in measures with the ``high`` boundary fot the sample range
-        high : float or int
-            High boundary for the sample range
+    Parameters
+    ----------
+    a : array_like
+        Input array in measures with the ``high`` boundary fot the sample range
+    high : float or int
+        High boundary for the sample range
 
-        Returns
-        -------
-        rad2val : ndarray
-            The corresponding radian values. This is a scalar if ``a`` is a scalar.
+    Returns
+    -------
+    rad2val : ndarray
+        The corresponding radian values. This is a scalar if ``a`` is a scalar.
 
-        Example
-        --------
-        >>> import numpy as np
-        >>> from pltstat.circle import val2rad
+    Example
+    --------
+    >>> import numpy as np
+    >>> from pltstat.circle import val2rad
 
-        >>> a = [0, 3, 19, 25]
-        >>> val2rad(a, high=24)
-        array([0., 0.78539816, 4.97418837, 6.54498469])
+    >>> a = [0, 3, 19, 25]
+    >>> val2rad(a, high=24)
+    array([0., 0.78539816, 4.97418837, 6.54498469])
 
-        >>> val2rad(a, high=24) / np.pi
-        array([0., 0.25, 1.58333333, 2.08333333])
+    >>> val2rad(a, high=24) / np.pi
+    array([0., 0.25, 1.58333333, 2.08333333])
     """
     a = np.array(a)
     a = a / high * 2 * np.pi

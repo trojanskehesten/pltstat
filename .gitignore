@@ -7,6 +7,9 @@ venv/
 # Sandbox
 sandbox/
 
+# Jupyter notebooks
+*.ipynb
+
 # Jupyter notebook checkpoints
 .ipynb_checkpoints
 
