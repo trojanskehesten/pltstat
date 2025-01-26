@@ -145,7 +145,7 @@ def countplot(df_column, is_count_order=True, x_rotation=90, figsize=(18, 6), **
     plt.xticks(rotation=x_rotation)
 
 
-def histplot(df_column, is_limits=False, bins=None, **kwargs):  # , n_modes=0):
+def histplot(df_column, is_limits=False, bins='auto', **kwargs):  # , n_modes=0):
     """
     Plot a histogram with a Kernel Density Estimation (KDE) overlay and additional statistics.
 
@@ -182,11 +182,11 @@ def histplot(df_column, is_limits=False, bins=None, **kwargs):  # , n_modes=0):
     >>> import pandas as pd
     >>> import seaborn as sns
     >>> from pltstat.singlefeat import histplot
-    >>> data = pd.Series([1, 2, 2, 3, 3, 3, 4, 4, 4, 4])
-    >>> histplot(data)
+    >>> s = pd.Series([1, 2, 2, 3, 3, 3, 4, 4, 4, 4])
+    >>> histplot(s)
 
     >>> # Using specific settings for limits and bins
-    >>> histplot(data, is_limits=True, bins=5)
+    >>> histplot(s, is_limits=True, bins=5)
     """
     if is_limits:
         min_val = df_column.min()
@@ -197,18 +197,25 @@ def histplot(df_column, is_limits=False, bins=None, **kwargs):  # , n_modes=0):
     else:
         ax = sns.histplot(df_column, kde=True, bins=bins, **kwargs)
 
+    # Get coordinates for the texts (bin heights)
+    for p in ax.patches:
+        height = p.get_height()
+        x = p.get_x() + p.get_width() / 2
+        # Add text at the top of each bin
+        ax.text(x, height + 0.1, str(int(height)), ha='center', va='bottom', fontsize=10)
+
     top_values = df_column.value_counts().index.to_numpy()
     top_counts = df_column.value_counts().values
 
     mode = top_values[0]
-    bins_most_height = np.array([p.get_height() for p in ax.patches]).max()
+    max_height = np.array([p.get_height() for p in ax.patches]).max()
     # coef = bins_most_height / top_counts[0]
 
-    plt.vlines(mode, 0, bins_most_height, colors="r", label="mode")
+    plt.vlines(mode, 0, max_height, colors="r", label="mode")
     plt.text(
         mode,
-        bins_most_height,
-        "mode=%.2f" % mode,  # '%.2f (mode)' % mode,
+        max_height,
+        f"mode={mode:.2f}",
         fontsize=12,
         horizontalalignment="right",
         verticalalignment="top",
@@ -216,14 +223,15 @@ def histplot(df_column, is_limits=False, bins=None, **kwargs):  # , n_modes=0):
     )
     plt.text(
         mode,
-        bins_most_height,
-        "count=%d" % top_counts[0],
+        max_height,
+        f"count={top_counts[0]:%d}",
         fontsize=12,
         horizontalalignment="left",
         verticalalignment="top",
         rotation="vertical",
     )
 
+    ax.set_ylim(0, max_height + 1)
     plt.legend()
 
 
@@ -355,28 +363,3 @@ def auto_naive_plot(
         print("Unable to determine feature format or plot it")
     # print('un', n_unique)
     # print('# nan:', n_nan)
-
-
-# TODO:Not circle but heatmap with HDE and values of bins!
-def plot_hist_man_ing(hours, title, y_step, h_step=2, height=6, aspect=2.5):
-    """
-    Plot histogram of ingestion time
-    """
-    bins = np.arange(0, 25, h_step)
-    bin_values = np.histogram(hours, bins=bins)
-    max_y = bin_values[0].max()
-    max_y = max_y + y_step - max_y % y_step
-
-    sns.displot(hours, kde=True, bins=bins, height=height, aspect=aspect)
-    if (h_step - int(h_step)) != 0:
-        plt.xticks(bins, bins, rotation=45);
-    else:
-        plt.xticks(bins, bins)
-    plt.yticks(range(0, max_y+1, y_step), range(0, max_y+1, y_step))
-    plt.ylabel('Count of ingestions')
-    plt.xlim(0, 24)
-    plt.ylim(0, max_y)
-    for x, y in zip(bin_values[1], bin_values[0]):
-        plt.text(x+h_step/2, y, y, horizontalalignment='center', verticalalignment='bottom')
-    plt.grid()
-    plt.title(title);
