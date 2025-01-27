@@ -38,7 +38,7 @@ def pie(df_column, ax=None, **kwargs):
     - Additional keyword arguments can be used to modify the pie chart, such as
       `colors`, `startangle`, `shadow`, etc.
 
-    Examples
+    Example
     --------
     >>> import pandas as pd
     >>> from pltstat.singlefeat import hist
@@ -113,7 +113,7 @@ def countplot(df_column, is_count_order=True, x_rotation=90, figsize=(18, 6), **
     - The `order` argument of `sns.countplot()` is modified when `is_count_order=True`
       to display the categories in descending order of frequency.
 
-    Examples
+    Example
     --------
     >>> import pandas as pd
     >>> import seaborn as sns
@@ -175,7 +175,7 @@ def histplot(df_column, is_limits=False, bins='auto', **kwargs):  # , n_modes=0)
     - The mode's value and count are displayed on the plot.
     - The histogram is overlaid with a KDE curve, and the mode is indicated by a red vertical line.
 
-    Examples
+    Example
     --------
     >>> import pandas as pd
     >>> import seaborn as sns
@@ -271,7 +271,7 @@ def auto_naive_plot(
     - It applies appropriate plots such as pie charts, count plots, or histograms based on the feature type.
     - For continuous features, the function shows the min, max, mean, and median values if requested.
 
-    Examples
+    Example
     --------
     >>> import pandas as pd
     >>> from pltstat.singlefeat import auto_naive_plot

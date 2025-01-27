@@ -27,15 +27,48 @@ def nulls(
     print_all=True,
 ):
     """
-    Plot graph of nulls (black color) for features of DataFrame
+    Plot a heatmap to visualize null values in the DataFrame.
 
-    :param df: pd.DataFrame
-    :param figsize: tuple
-    :param index: name of column, str for ylabel
-    :param n_ticks: number of y ticks
-    :param print_str_index: if index is string, print it instead of range numbers?
-    :param print_all: print all string indexes or only n (n_ticks) of its?
-    :return: None
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The input DataFrame containing the data.
+    figsize : tuple, optional, default=(20, 10)
+        The size of the figure (width, height) in inches.
+    index : str, optional, default=None
+        The name of the column to use as the y-axis label. If None, the index is used.
+    n_ticks : int, optional, default=None
+        The number of y-axis ticks to display. If None, 10+1 ticks will be displayed.
+    print_str_index : bool, optional, default=False
+        If True and the index is a string type, print the index values as labels.
+    print_all : bool, optional, default=True
+        If True, display all index values; if False, display only the `n_ticks` specified.
+
+    Returns
+    -------
+    None
+        The function creates a heatmap plot of null values and does not return any value.
+
+    Notes
+    -----
+    - The plot shows the null values in the DataFrame as black color.
+    - The function dynamically adjusts the y-axis labels depending on the input DataFrame index or the specified `index` column.
+
+    Example
+    --------
+    Basic usage with default settings.
+
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from pltstat.multfeats import nulls
+    >>>
+    >>> df = pd.DataFrame({
+    >>>     'A': [1, 2, np.nan, 4],
+    >>>     'B': [np.nan, 2, 3, 4],
+    >>>     'C': [1, np.nan, np.nan, 4]
+    >>> })
+    >>>
+    >>> nulls(df)
     """
     plt.figure(figsize=figsize)
     sns.heatmap(
@@ -82,13 +115,45 @@ def nulls(
     plt.yticks(y_ticks, y_labels)
 
 
-def dist_qq_plot(df, figsize):
+def dist_qq_plot(df, figsize, **kwargs):
     """
-    Plot histogram and 4-plot for each feature of df
+    Plot histograms and Q-Q plots for each feature of the DataFrame, along with the Shapiro-Wilk test p-values.
 
-    :param df: pd.DataFrame
-    :param figsize: tuple
-    :return: None
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame containing the features to be plotted. Each feature will have its own histogram and Q-Q plot.
+    figsize : tuple
+        The size of the figure (width, height) in inches.
+    **kwargs : keyword arguments
+        Additional arguments passed to the `sns.histplot()` function for customizing the histogram plots.
+
+    Returns
+    -------
+    shapiros : np.ndarray
+        An array containing the Shapiro-Wilk test p-values for each feature in the DataFrame.
+
+    Notes
+    -----
+    - The function dynamically determines the number of rows and columns needed to plot the histograms and Q-Q plots
+      based on the number of features in the DataFrame.
+    - Each feature is plotted with its histogram and a Q-Q plot to assess its distribution.
+    - The median of each feature is displayed in the plot title.
+    - The Shapiro-Wilk p-value is shown in the plot title to indicate if the data is normally distributed.
+    - The number of rows and columns in the plot grid is adjusted based on the number of features in the DataFrame.
+
+    Example
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from pltstat.multfeats import dist_qq_plot
+    >>> np.random.seed(42)
+    >>>
+    >>> df = pd.DataFrame({
+    >>>     'A': np.random.normal(0, 1, 100),
+    >>>     'B': np.random.normal(5, 2, 100)
+    >>> })
+    >>> dist_qq_plot(df, figsize=(12, 8), kde=True)
     """
     n_cols_df = df.shape[1]
 
@@ -122,7 +187,7 @@ def dist_qq_plot(df, figsize):
     shapiros = []
     if n_cols_df > 3:
         for col in df:
-            sns.distplot(df[col], ax=axs[i // n_cols, i % n_cols])
+            sns.histplot(df[col], ax=axs[i // n_cols, i % n_cols], **kwargs)
             median = df[col].median()
             axs[i // n_cols, i % n_cols].set_title(col + "\nMedian=%.2f" % median)
             i += 1
@@ -135,7 +200,7 @@ def dist_qq_plot(df, figsize):
             shapiros.append(pval)
     else:
         for col in df:
-            sns.distplot(df[col], ax=axs[i])
+            sns.histplot(df[col], ax=axs[i], **kwargs)
             median = df[col].median()
             axs[i].set_title(col + "\nMedian=%.2f" % median)
             i += 1
@@ -145,13 +210,47 @@ def dist_qq_plot(df, figsize):
             i += 1
             shapiros.append(pval)
 
-    return np.array(shapiros)
+    shapiros = np.array(shapiros)
+
+    return shapiros
 
 
 def embeddings_creation(X, random_state=0):
     """
-    Create 2D representation of data.
-    Return umap and tsne data.
+    Create 2D representation of data using UMAP and t-SNE.
+
+    Parameters
+    ----------
+    X : array-like, shape (n_samples, n_features)
+        The input data for dimensionality reduction.
+    random_state : int, optional, default=0
+        The seed used by the random number generator. Used to ensure reproducibility of the results.
+
+    Returns
+    -------
+    X_umap : array, shape (n_samples, 2)
+        The 2D UMAP embeddings of the input data.
+    X_tsne : array, shape (n_samples, 2)
+        The 2D t-SNE embeddings of the input data.
+
+    Notes
+    -----
+    The function uses both UMAP and t-SNE algorithms to reduce the input data `X` to 2D representations.
+    The `random_state` ensures that the results are reproducible across different runs of the function.
+
+    Example
+    --------
+    >>> from sklearn.datasets import load_iris
+    >>> import pandas as pd
+    >>> from pltstat.multfeats import embeddings_creation
+    >>>
+    >>> iris = load_iris()
+    >>> X = pd.DataFrame(iris.data, columns=iris.feature_names)
+    >>> X_umap, X_tsne = embeddings_creation(X, random_state=42)
+    >>> X_umap.shape
+    (150, 2)
+    >>> X_tsne.shape
+    (150, 2)
     """
     reducer = umap.UMAP(random_state=random_state)
     X_umap = reducer.fit_transform(X)
@@ -163,25 +262,47 @@ def embeddings_creation(X, random_state=0):
     return X_umap, X_tsne
 
 
-
-def plot_umap_tsne(
-    X_umap, X_tsne, labels=None, clust_name="None", unnoisy_idx=None, figsize=(16, 6)
-):
+def plot_umap_tsne(X_umap, X_tsne, labels=None, clust_name="None", unnoisy_idx=None, figsize=(16, 6)):
     """
-    Plotting clusterization on umap and tsne representation without noisy points
-    (if data has noisy points).
+    Plot UMAP and t-SNE projections of data with cluster labels, optionally excluding noisy points.
 
-    :param X_umap: numpy.array
-        UMAP 2D data
-    :param X_tsne: numpy.array
-        t-SNE 2D data
-    :param labels: numpy.array
-        array of points labels
-    :param clust_name: str
-        Name of clusterization method
-    :param unnoisy_idx: numpy.array
-        Indexes of unnoisy points
-    :return: None
+    Parameters
+    ----------
+    X_umap : array, shape (n_samples, 2)
+        2D UMAP embeddings of the data.
+    X_tsne : array, shape (n_samples, 2)
+        2D t-SNE embeddings of the data.
+    labels : array, shape (n_samples,), optional
+        Cluster labels for each sample. If not provided, no coloring will be applied.
+    clust_name : str, optional, default="None"
+        Name of the clustering method used (e.g., "KMeans", "DBSCAN").
+    unnoisy_idx : array, shape (n_samples,), optional
+        Indices of non-noisy points. If provided, only those points will be plotted.
+    figsize : tuple, optional, default=(16, 6)
+        The size of the figure.
+
+    Returns
+    -------
+    None
+        The function creates a plot in place and does not return any value.
+
+    Notes
+    -----
+    The function generates two side-by-side scatter plots showing the results of
+    dimensionality reduction using UMAP and t-SNE, with the points colored according to
+    the given cluster labels. If `unnoisy_idx` is provided, only the non-noisy points
+    will be plotted.
+
+    Example
+    --------
+    >>> import numpy as np
+    >>> from sklearn.datasets import load_iris
+    >>> from pltstat.multfeats import plot_umap_tsne
+    >>>
+    >>> iris = load_iris()
+    >>> X = iris.data
+    >>> labels = np.array([0, 1, 2] * 50)  # Example labels for 3 clusters
+    >>> plot_umap_tsne(X_umap, X_tsne, labels=labels, clust_name="KMeans")
     """
     if isinstance(labels, str):
         labels = labels.astype("str")  # TODO str for categorical palette
@@ -223,17 +344,55 @@ def heatmap_corr(
     cols=None,
     threshold=None,
     linecolor="white",
+    **kwargs,
 ):
     """
-    Create df.corr and print heatmap of it with tuned parameters
+    Compute correlation matrix and visualize it using a heatmap.
 
-    :param df: pd.DataFrame
-    :param type: str, method of df.corr(). Also 'cramer_v' is accepted
-    :param figsize: tuple
-    :param fmt: string
-    :param index: list/array of features which is necessary to be in rows
-    :param cols: list/array of features which is necessary to be in columns
-    :return: None
+    Parameters
+    ----------
+    df : DataFrame
+       Input DataFrame containing the data to compute the correlation matrix.
+    corr_type : str, optional, default="pearson"
+       The method to compute correlation. Supported options include "pearson",
+       "kendall", "spearman", and "cramer_v" for categorical data.
+    figsize : tuple, optional, default=(30, 20)
+       The size of the figure (width, height) in inches.
+    fmt : str, optional, default=".2f"
+       The format string for the annotation of correlation values in the heatmap.
+    index : list or array, optional
+       List or array of features to be used as rows in the correlation matrix. If None, all features will be used.
+    cols : list or array, optional
+       List or array of features to be used as columns in the correlation matrix. If None, all features will be used.
+    threshold : float, optional
+       Threshold value for customizing the heatmap colors. If specified, only correlations
+       above this threshold will be displayed.
+    linecolor : str, optional, default="white"
+       The color of the lines separating the cells in the heatmap.
+    **kwargs : keyword arguments
+       Additional parameters passed to `sns.heatmap`.
+
+    Returns
+    -------
+    None
+       The function creates a heatmap in place and does not return any value.
+
+    Notes
+    -----
+    This function computes the correlation matrix of the DataFrame using the specified
+    method (`corr_type`). The resulting matrix is visualized as a heatmap, where the
+    color intensity represents the strength of the correlation between the variables.
+    If `threshold` is provided, correlations below the threshold are ignored.
+
+    Example
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from pltstat.multfeats import heatmap_corr
+    >>>
+    >>> np.random.seed(42)
+    >>> df = pd.DataFrame(np.random.rand(10, 5), columns=list("ABCDE"))
+    >>> heatmap_corr(df, corr_type="pearson")
     """
     plt.figure(figsize=figsize)
 
@@ -288,22 +447,77 @@ def heatmap_corr(
         linewidths=0.5,
         linecolor=linecolor,
         cmap=cmap,
+        **kwargs,
     )
 
 
 def r_pval(
     df,
-    dm_corr_cols,
-    stat_cols,
-    figsize,
+    corr_type="pearson",
+    figsize=(30, 20),
+    index=None,
+    cols=None,
     cmap_thr=0.8,
     is_T=False,
     annot=True,
     show_pvals=True,
     annot_rot=0,
+    **kwargs,
 ):
     """
-    Create Heatmaps with correlations and p-values by Spearman's statistic
+    Create Heatmaps with correlations and p-values by Spearman's statistic.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        DataFrame for analysis.
+    dm_corr_cols : list
+        Demographic numeric columns.
+    stat_cols : list
+        Statistical numeric columns.
+    figsize : tuple
+        Size of the figure.
+    cmap_thr : float, optional
+        Threshold for cmap significance. Default is 0.8.
+    is_T : bool, optional
+        If True, pivot the table. Default is False.
+    annot : bool, optional
+        If True, annotate cells. Default is True.
+    show_pvals : bool, optional
+        If True, display p-values in the second heatmap. Default is True.
+    annot_rot : int, optional
+        Rotation angle for annotation. Default is 0.
+    **kwargs : keyword arguments
+        Additional arguments passed to `sns.heatmap`.
+
+    Returns
+    -------
+    df_corrs : pandas.DataFrame
+        DataFrame of Spearman correlation coefficients.
+    df_pvals : pandas.DataFrame
+        DataFrame of Spearman p-values.
+
+    Examples
+    --------
+    Create a DataFrame with random data and compute correlation and p-values:
+
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> np.random.seed(42)
+    >>> df = pd.DataFrame({
+    >>>     'age': np.random.randint(18, 70, size=100),
+    >>>     'income': np.random.randint(20000, 100000, size=100),
+    >>>     'education_years': np.random.randint(10, 20, size=100)
+    >>> })
+    >>> dm_corr_cols = ['age', 'education_years']
+    >>> stat_cols = ['income']
+    >>> figsize = (10, 6)
+    >>> df_corrs, df_pvals = r_pval(df, dm_corr_cols, stat_cols, figsize)
+    >>> print(df_corrs)
+    >>> print(df_pvals)
+    """
+
+    """Create Heatmaps with correlations and p-values by Spearman's statistic
     :param df: pd.DataFrame for analysis
     :param dm_corr_cols: Demographic numeric columns
     :param stat_cols: Statistical numeric columns
@@ -350,6 +564,7 @@ def r_pval(
         linewidths=1,
         ax=ax[0],
         annot_kws={"rotation": annot_rot},
+        **kwargs,
     )
     ax[0].set_title("Spearman correlations, correlation coefficient")
     xticks = df_corrs.columns
@@ -437,6 +652,7 @@ def mw_pval(
     plt.title("Mann-Whitney p-values")
     return df_pvals
 
+
 def phik_corrs(
     df,
     x=None,
@@ -449,7 +665,58 @@ def phik_corrs(
     annot_size=None,
     **kwargs,
 ):
-    """P,ot Heatmap with Phik correlations between specific x and y lists of columns"""
+    """
+    Plot Heatmap with Phik correlations between specific x and y lists of columns.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        DataFrame containing the data for correlation calculation.
+    x : list, optional
+        List of columns to use for the x-axis in the correlation matrix. If None,
+        correlations will be calculated for all columns in df.
+    y : list, optional
+        List of columns to use for the y-axis in the correlation matrix. If None,
+        correlations will be calculated for all columns in df.
+    threshold : float, optional
+        The threshold value for displaying Phik correlation values on the heatmap.
+        Only correlations equal to or greater than this threshold will be shown. Default is 0.8.
+    annot : bool, optional
+        If True, annotate the cells in the heatmap with the correlation values. Default is True.
+    fmt : str, optional
+        Format for displaying correlation values in the heatmap. Default is ".2f".
+    figsize : tuple, optional
+        Figure size for the plot. Default is None, which uses the default size.
+    annot_rot : int, optional
+        Rotation angle for the annotations. Default is 0.
+    annot_size : int, optional
+        Font size for the annotations. Default is None.
+    **kwargs : keyword arguments
+        Additional arguments passed to `sns.heatmap`.
+
+    Returns
+    -------
+    None
+        The function generates a heatmap and does not return any values.
+
+    Examples
+    --------
+    Create a DataFrame and plot the Phik correlation heatmap between specific columns:
+
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from pltstat.multfeats import phik_corrs
+    >>>
+    >>> np.random.seed(42)
+    >>> df = pd.DataFrame({
+    >>>     'age': np.random.randint(18, 70, size=100),
+    >>>     'income': np.random.randint(20000, 100000, size=100),
+    >>>     'education_years': np.random.randint(10, 20, size=100)
+    >>> })
+    >>> x = ['age', 'income']
+    >>> y = ['education_years']
+    >>> phik_corrs(df, x=x, y=y, figsize=(8, 6))
+    """
     cmap = get_corr_thr_cmap(threshold=threshold, vmin=0)
     if (x is not None) and (y is not None):
         xy = np.concatenate((x, y))

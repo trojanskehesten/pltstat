@@ -63,7 +63,7 @@ tf.boxplot(df, "gender", "age")
 - **[`__init__.py`](__init__.py)**
   - Marks the directory as a Python package. This file allows you to import modules from the `pltstat` package.
 
-- **[`singlefeats.py`](singlefeats.py)**
+- **[`singlefeat.py`](singlefeat.py)**
   - Dedicated to the analysis and visualization of single-variable features, including plotting functions such as pie charts, count plots, and histograms.
 
 - **[`twofeats.py`](twofeats.py)**

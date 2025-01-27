@@ -80,7 +80,7 @@ def crosstab(
     - The function can automatically detect and apply the appropriate statistical test (Chi-square or Fisher's exact test).
     - For binary 2x2 tables, Matthews correlation is calculated; otherwise, Cramér's V is used.
 
-    Examples
+    Example
     --------
     >>> import pandas as pd
     >>> import seaborn as sns
@@ -225,7 +225,7 @@ def corr(
     None
         The function displays the plot.
 
-    Examples
+    Example
     --------
     >>> import pandas as pd
     >>> from pltstat.twofeats import corr
