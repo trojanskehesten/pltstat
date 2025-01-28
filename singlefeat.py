@@ -65,9 +65,7 @@ def pie(df_column, ax=None, figsize=None, **kwargs):
 
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=figsize)
-        # plt.title(df_column.name)
-        # ax = plt
-    # else:
+
     ax.set_title(df_column.name)
 
     ax.pie(
@@ -128,7 +126,8 @@ def countplot(df_column, is_count_order=True, is_color=True, ax=None, figsize=(1
     >>> data = pd.Series(['A', 'B', 'A', 'C', 'B', 'A', 'B', 'B'])
     >>> countplot(data, is_count_order=True, is_color=True, figsize=(12, 4))
     """
-    plt.figure(figsize=figsize)
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
 
     colname = df_column.name
     if colname is None:
@@ -148,7 +147,7 @@ def countplot(df_column, is_count_order=True, is_color=True, ax=None, figsize=(1
     else:
         order = None
 
-    ax = sns.countplot(
+    sns.countplot(
         df_column.to_frame(),
         x=colname,
         order=order,
@@ -172,10 +171,13 @@ def countplot(df_column, is_count_order=True, is_color=True, ax=None, figsize=(1
             horizontalalignment="center",
             verticalalignment="center",
         )
-        # ax.annotate(text, (x, y), ha='center', va='center', xytext=(x, y))
+
+    # Text should not be above the limits:
+    max_height = np.array([p.get_height() for p in ax.patches]).max()
+    ax.set_ylim(0, max_height + 1)
 
 
-def histplot(df_column, is_limits=False, bins='auto', **kwargs):  # , n_modes=0):
+def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False, ax=None, figsize=(18, 6), **kwargs):  # , n_modes=0):
     """
     Plot a histogram with a Kernel Density Estimation (KDE) overlay and additional statistics.
 
@@ -210,22 +212,29 @@ def histplot(df_column, is_limits=False, bins='auto', **kwargs):  # , n_modes=0)
     Example
     --------
     >>> import pandas as pd
-    >>> import seaborn as sns
+    >>> import numpy as np
     >>> from pltstat.singlefeat import histplot
-    >>> s = pd.Series([1, 2, 2, 3, 3, 3, 4, 4, 4, 4])
-    >>> histplot(s)
-
-    >>> # Using specific settings for limits and bins
-    >>> histplot(s, is_limits=True, bins=5)
+    >>>
+    >>> # Generate 40 normally distributed float values
+    >>> np.random.seed(42)
+    >>> normal_floats = np.random.normal(loc=50, scale=20, size=40)
+    >>>
+    >>> # Clip values to be within the range [0, 100]
+    >>> clipped_values = np.clip(np.round(normal_floats), 0, 100).astype(int)
+    >>>
+    >>> # Convert to a pandas Series
+    >>> s = pd.Series(clipped_values)
+    >>> histplot(s, show_mode=True, bins=np.arange(-5, 106, 10))
     """
     if is_limits:
-        min_val = df_column.min()
-        max_val = df_column.max()
-        ax = sns.histplot(
-            df_column, kde=True, kde_kws={"clip": (min_val, max_val)}, bins=bins
-        )
+        kde_kws = {"clip": (df_column.min(), df_column.max())}
     else:
-        ax = sns.histplot(df_column, kde=True, bins=bins, **kwargs)
+        kde_kws = None
+
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+    sns.histplot(df_column, kde=kde, kde_kws=kde_kws, bins=bins, ax=ax)
 
     # Get coordinates for the texts (bin heights)
     for p in ax.patches:
@@ -237,10 +246,15 @@ def histplot(df_column, is_limits=False, bins='auto', **kwargs):  # , n_modes=0)
     top_values = df_column.value_counts().index.to_numpy()
     top_counts = df_column.value_counts().values
 
-    mode = top_values[0]
     max_height = np.array([p.get_height() for p in ax.patches]).max()
-    # coef = bins_most_height / top_counts[0]
 
+    ax.set_ylim(0, max_height + 1)
+    plt.legend()
+
+    if show_mode is False:
+        return
+
+    mode = top_values[0]
     plt.vlines(mode, 0, max_height, colors="r", label="mode")
     plt.text(
         mode,
@@ -254,15 +268,12 @@ def histplot(df_column, is_limits=False, bins='auto', **kwargs):  # , n_modes=0)
     plt.text(
         mode,
         max_height,
-        f"count={top_counts[0]:%d}",
+        f"count={top_counts[0]:d}",
         fontsize=12,
         horizontalalignment="left",
         verticalalignment="top",
         rotation="vertical",
     )
-
-    ax.set_ylim(0, max_height + 1)
-    plt.legend()
 
 
 def auto_naive_plot(
