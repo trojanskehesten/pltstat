@@ -3,7 +3,7 @@ import seaborn as sns
 import numpy as np
 
 
-def pie(df_column, ax=None, **kwargs):
+def pie(df_column, ax=None, figsize=None, **kwargs):
     """
     Plot a pie chart of the value counts of a DataFrame column with enhanced settings.
 
@@ -19,6 +19,9 @@ def pie(df_column, ax=None, **kwargs):
     ax : matplotlib.axes.Axes, optional, default=None
         The Matplotlib Axes object to plot on. If None, the pie chart will be
         created on the current active plot.
+    figsize : tuple or None, optional, default=None
+        The size of the figure. If None, default sizes are used.
+        Note: `figsize` is ignored if the input parameter `ax` is not None.
     **kwargs : keyword arguments, optional
         Additional arguments to pass to `ax.pie()` to further customize the pie chart,
         such as `colors`, `startangle`, `shadow`, etc.
@@ -41,7 +44,7 @@ def pie(df_column, ax=None, **kwargs):
     Example
     --------
     >>> import pandas as pd
-    >>> from pltstat.singlefeat import hist
+    >>> from pltstat.singlefeat import pie
     >>> data = pd.Series(['A', 'B', 'A', 'C', 'B', 'A', 'B', 'B'])
     >>> pie(data)
     """
@@ -61,10 +64,11 @@ def pie(df_column, ax=None, **kwargs):
         return f"{pct:.1f}% ({absolute:d} )"
 
     if ax is None:
-        plt.title(df_column.name)
-        ax = plt
-    else:
-        ax.set_title(df_column.name)
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+        # plt.title(df_column.name)
+        # ax = plt
+    # else:
+    ax.set_title(df_column.name)
 
     ax.pie(
         value_counts.values,
