@@ -81,14 +81,14 @@ def pie(df_column, ax=None, figsize=None, **kwargs):
     )
 
 
-def countplot(df_column, is_count_order=True, x_rotation=90, figsize=(18, 6), **kwargs):
+def countplot(df_column, is_count_order=True, is_color=True, ax=None, figsize=(18, 6), **kwargs):
     """
     Plot a count plot for a DataFrame column with additional information on the bars.
 
     This function creates a count plot (bar plot) showing the distribution of
     categorical data. It can optionally order the bars by the count of occurrences
-    and display percentages and raw counts on top of the bars. The x-axis labels
-    can also be rotated for better readability. The figure size can be customized.
+    and display percentages and raw counts on top of the bars. Note that the figure
+    size (`figsize`) is ignored if an existing matplotlib Axes (`ax`) is provided.
 
     Parameters
     ----------
@@ -98,13 +98,15 @@ def countplot(df_column, is_count_order=True, x_rotation=90, figsize=(18, 6), **
     is_count_order : bool, optional, default=True
         If True, the bars will be ordered by the count of occurrences in descending order.
         If False, the bars will be ordered according to the original order of the values.
-    x_rotation : int, optional, default=90
-        The rotation angle of the x-axis labels, in degrees.
+    is_color : bool, optional, default=True
+        If True, bars are colored using the column's unique values with the "muted" palette.
+        If False, a default single color is used.
+    ax : matplotlib.axes.Axes, optional, default=None
+        An existing matplotlib Axes to plot on. If None, a new figure and Axes are created.
     figsize : tuple of (float, float), optional, default=(18, 6)
-        The size of the figure in inches.
+        The size of the figure in inches. Ignored if `ax` is not None.
     **kwargs : keyword arguments, optional
-        Additional arguments passed to `sns.countplot()` for further customization
-        of the plot, such as `hue`, `palette`, `ax`, etc.
+        Additional arguments passed to `sns.countplot()` for further customization of the plot.
 
     Returns
     -------
@@ -114,8 +116,9 @@ def countplot(df_column, is_count_order=True, x_rotation=90, figsize=(18, 6), **
     Notes
     -----
     - The percentage and raw count are displayed above each bar for better visualization.
-    - The `order` argument of `sns.countplot()` is modified when `is_count_order=True`
+    - If `is_count_order=True`, the `order` argument of `sns.countplot()` is modified
       to display the categories in descending order of frequency.
+    - The `figsize` parameter has no effect if `ax` is not None.
 
     Example
     --------
@@ -123,13 +126,39 @@ def countplot(df_column, is_count_order=True, x_rotation=90, figsize=(18, 6), **
     >>> import seaborn as sns
     >>> from pltstat.singlefeat import countplot
     >>> data = pd.Series(['A', 'B', 'A', 'C', 'B', 'A', 'B', 'B'])
-    >>> countplot(data)
+    >>> countplot(data, is_count_order=True, is_color=True, figsize=(12, 4))
     """
     plt.figure(figsize=figsize)
-    if is_count_order:
-        ax = sns.countplot(df_column, order=df_column.value_counts().index, **kwargs)
+
+    colname = df_column.name
+    if colname is None:
+        temp_name = 'Values'
+        df_column.name = temp_name
+        colname = temp_name
+
+    if is_color:
+        hue = colname
+        palette = "muted"
     else:
-        ax = sns.countplot(df_column, **kwargs)
+        hue = None
+        palette = None
+
+    if is_count_order:
+        order = df_column.value_counts().index
+    else:
+        order = None
+
+    ax = sns.countplot(
+        df_column.to_frame(),
+        x=colname,
+        order=order,
+        palette=palette,
+        hue=hue,
+        legend=False,
+        ax=ax,
+        **kwargs,
+    )
+
     total = len(df_column)
     for p in ax.patches:
         text = f"{100 * p.get_height() / total:.1f}% \n ({p.get_height()})"
@@ -144,7 +173,6 @@ def countplot(df_column, is_count_order=True, x_rotation=90, figsize=(18, 6), **
             verticalalignment="center",
         )
         # ax.annotate(text, (x, y), ha='center', va='center', xytext=(x, y))
-    plt.xticks(rotation=x_rotation)
 
 
 def histplot(df_column, is_limits=False, bins='auto', **kwargs):  # , n_modes=0):
