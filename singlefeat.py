@@ -195,8 +195,16 @@ def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False,
         of the data. If False, the KDE plot is drawn without limits.
     bins : int, optional, default=None
         The number of bins to use for the histogram. If None, an automatic binning strategy is used.
+    kde : bool, optional, default=True
+        If True, a Kernel Density Estimation (KDE) plot is overlaid on the histogram.
+    show_mode : bool, optional, default=False
+        If True, the mode (most frequent value) of the data is displayed on the plot with its count.
+    ax : matplotlib.axes.Axes, optional, default=None
+        An existing matplotlib Axes to plot on. If None, a new figure and Axes are created.
+    figsize : tuple of (float, float), optional, default=(18, 6)
+        The size of the figure in inches. Ignored if `ax` is not None.
     **kwargs : keyword arguments, optional
-        Additional keyword arguments passed to `sns.histplot()`, such as `hue`, `palette`, `ax`, etc.
+        Additional keyword arguments passed to `sns.histplot()`.
 
     Returns
     -------
@@ -205,9 +213,10 @@ def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False,
 
     Notes
     -----
-    - The histogram is annotated with the mode (the most frequent value) of the data.
-    - The mode's value and count are displayed on the plot.
-    - The histogram is overlaid with a KDE curve, and the mode is indicated by a red vertical line.
+    - The histogram is annotated with the mode (the most frequent value) of the data if `show_mode=True`.
+    - The mode's value and count are displayed on the plot, indicated by a red vertical line.
+    - The KDE plot is overlaid on the histogram, and the KDE limits are adjusted if `is_limits=True`.
+
 
     Example
     --------
