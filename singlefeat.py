@@ -58,16 +58,22 @@ def pie(df_column, ax=None, figsize=None, is_count_order=True, **kwargs):
     value_counts_norm = df_column.value_counts(normalize=True)
     cat_number = value_counts.shape[0]
 
-    def func(pct, allvals_norm, allvals):
-        TOL = 0.01
-        absolute = allvals[
-            np.where(np.abs(round(pct, 2) - 100 * np.round(allvals_norm, 4)) < TOL)[
-                0
-            ][0]
-        ]
+    def format_pie_label(pct, allvals_norm, allvals):
+        """Return a formatted string with percentage and absolute value.
 
-        # absolute = int(pct*np.sum(allvals)/100)
-        return f"{pct:.1f}% ({absolute:d} )"
+        Args:
+            pct (float): Percentage value.
+            allvals_norm (array-like): Normalized values summing to 1.
+            allvals (array-like): Absolute values corresponding to allvals_norm.
+
+        Returns:
+            str: Formatted string with percentage and absolute count.
+        """
+        TOL = 0.01
+        mask = np.where(np.abs(round(pct, 2) - 100 * np.round(allvals_norm, 4)) < TOL)[0][0]
+        absolute = allvals[mask]
+
+        return f"{pct:.1f}% ({absolute:d})"
 
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=figsize)
@@ -82,9 +88,7 @@ def pie(df_column, ax=None, figsize=None, is_count_order=True, **kwargs):
     ax.pie(
         value_counts.values,
         labels=value_counts.index,
-        autopct=lambda pct: func(pct, value_counts_norm.values, value_counts.values),
-        # autopct='%.1f %%',
-        # startangle= 120,
+        autopct=lambda pct: format_pie_label(pct, value_counts_norm.values, value_counts.values),
         explode=[0.02] * cat_number,
         **kwargs,
     )
@@ -315,8 +319,8 @@ def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False,
         return
 
     mode = top_values[0]
-    plt.vlines(mode, 0, max_height, colors="r", label="mode")
-    plt.text(
+    ax.vlines(mode, 0, max_height, colors="r", label="mode")
+    ax.text(
         mode,
         max_height,
         f"mode={mode:.2f}",
@@ -325,7 +329,7 @@ def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False,
         verticalalignment="top",
         rotation="vertical",
     )
-    plt.text(
+    ax.text(
         mode,
         max_height,
         f"count={top_counts[0]:d}",
