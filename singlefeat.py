@@ -2,8 +2,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
+THRESHOLD_MANY_CATS = 20  # If categories more than 20 and numbers - group small categories to "Other" group
+THRESHOLD_BIG_CAT = 5  # If categories more than 5 - too many categories, don't plot pie plot
 
-def pie(df_column, ax=None, figsize=None, **kwargs):
+
+def pie(df_column, ax=None, figsize=None, is_count_order=True, **kwargs):
     """
     Plot a pie chart of the value counts of a DataFrame column with enhanced settings.
 
@@ -22,6 +25,9 @@ def pie(df_column, ax=None, figsize=None, **kwargs):
     figsize : tuple or None, optional, default=None
         The size of the figure. If None, default sizes are used.
         Note: `figsize` is ignored if the input parameter `ax` is not None.
+    is_count_order : bool, optional, default=True
+        If True, the bars will be ordered by the count of occurrences in descending order.
+        If False, the bars will be ordered according to the original order of the values.
     **kwargs : keyword arguments, optional
         Additional arguments to pass to `ax.pie()` to further customize the pie chart,
         such as `colors`, `startangle`, `shadow`, etc.
@@ -68,6 +74,11 @@ def pie(df_column, ax=None, figsize=None, **kwargs):
 
     ax.set_title(df_column.name)
 
+    if is_count_order is True:
+        value_counts = value_counts.sort_values()
+    else:
+        value_counts = value_counts.sort_index()
+
     ax.pie(
         value_counts.values,
         labels=value_counts.index,
@@ -79,7 +90,15 @@ def pie(df_column, ax=None, figsize=None, **kwargs):
     )
 
 
-def countplot(df_column, is_count_order=True, is_color=True, ax=None, figsize=(18, 6), **kwargs):
+def countplot(
+        df_column,
+        is_count_order=True,
+        is_color=True,
+        ax=None,
+        figsize=(18, 6),
+        is_group_small_cats=True,
+        **kwargs
+):
     """
     Plot a count plot for a DataFrame column with additional information on the bars.
 
@@ -103,6 +122,10 @@ def countplot(df_column, is_count_order=True, is_color=True, ax=None, figsize=(1
         An existing matplotlib Axes to plot on. If None, a new figure and Axes are created.
     figsize : tuple of (float, float), optional, default=(18, 6)
         The size of the figure in inches. Ignored if `ax` is not None.
+    is_group_small_cats : bool, optional, default=True
+        If True, groups small categories into an "Other" category when there are too many unique values of a categorical
+        feature.
+
     **kwargs : keyword arguments, optional
         Additional arguments passed to `sns.countplot()` for further customization of the plot.
 
@@ -142,10 +165,38 @@ def countplot(df_column, is_count_order=True, is_color=True, ax=None, figsize=(1
         hue = None
         palette = None
 
+    # Change non-top 20 categories to "Other" group:
+    put_other_at_the_end = False
+    n_unique = len(df_column.dropna().unique())
+    if (n_unique > THRESHOLD_MANY_CATS):
+        if is_group_small_cats is True:
+            other_val = "Other"
+            value_counts = df_column.dropna().value_counts()
+
+            # Find top 20 categories:
+            if n_unique > THRESHOLD_MANY_CATS:
+                top_20 = value_counts.iloc[:THRESHOLD_MANY_CATS]
+                min_top_count = value_counts.iloc[THRESHOLD_MANY_CATS]  # Count of the 21st category
+
+                # Find categories for Other group:
+                other_mask = value_counts <= min_top_count
+                other_categories = value_counts[other_mask].index
+
+                # Replace small categories to Other group:
+                other_replacer = dict(zip(other_categories, [other_val] * len(other_categories)))
+                df_column = df_column.replace(other_replacer)
+                put_other_at_the_end = True
+
     if is_count_order:
         order = df_column.value_counts().index
     else:
-        order = None
+        order = df_column.unique()
+        order = np.sort(order)
+
+    # Put Other category at the end of the order:
+    if put_other_at_the_end is True:
+        order = order[order != other_val]
+        order = np.append(order, other_val)
 
     sns.countplot(
         df_column.to_frame(),
@@ -160,7 +211,7 @@ def countplot(df_column, is_count_order=True, is_color=True, ax=None, figsize=(1
 
     total = len(df_column)
     for p in ax.patches:
-        text = f"{100 * p.get_height() / total:.1f}% \n ({p.get_height()})"
+        text = f"{100 * p.get_height() / total:.1f}% \n ({p.get_height():.0f})"
         x = p.get_x() + p.get_width() / 2
         y = p.get_height()
         ax.text(
@@ -258,7 +309,7 @@ def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False,
     max_height = np.array([p.get_height() for p in ax.patches]).max()
 
     ax.set_ylim(0, max_height + 1)
-    plt.legend()
+    # ax.legend()
 
     if show_mode is False:
         return
@@ -290,7 +341,8 @@ def auto_naive_plot(
     is_ordinal=False,
     is_limits=None,
     is_show_average=True,
-    is_count_order=True,
+    is_count_order=None,
+    is_group_small_cats=True,
 ):
     """
     Plot information about a DataFrame column based on the type of values.
@@ -309,8 +361,11 @@ def auto_naive_plot(
         If True, applies limits for continuous features.
     is_show_average : bool, optional, default=True
         If True, the mean and median values will be displayed for continuous features.
-    is_count_order : bool, optional, default=True
+    is_count_order : bool, optional, default=None
         If True, orders categorical features by the count of their unique values for plotting.
+    is_group_small_cats : bool, optional, default=True
+        If True, groups small categories into an "Other" category when there are too many unique values of a categorical
+        feature.
 
     Returns
     -------
@@ -333,8 +388,6 @@ def auto_naive_plot(
     >>> # For ordinal features
     >>> auto_naive_plot(data, is_ordinal=True)
     """
-    threshold_cont = 20  # If categories more than 20 and numbers - continuous
-    threshold_big_cat = 5  # If categories more than 5 - too many categories, don't plot pie plot
 
     n_nan = np.sum(df_column.isnull())
     n_unique = len(df_column.dropna().unique())
@@ -348,9 +401,9 @@ def auto_naive_plot(
 
     try:
         # If number of unique values > threshold, treat as continuous
-        assert n_unique > threshold_cont
+        # assert n_unique > threshold_cont
         df_column = df_column.astype("float64")   # Try converting to float
-        dtype = "Continuous"
+        dtype = "Numerical"
     except Exception:
         # Otherwise, treat as categorical
         # It is impossible to use np.array_equal, because df_column can have float features:
@@ -362,16 +415,21 @@ def auto_naive_plot(
             dtype += ":Nominal"
 
     # Further refinement for continuous types
-    if dtype == "Continuous":
+    if dtype == "Numerical":
         if np.allclose(df_column, df_column.astype("int64")):
-            dtype += ":Integer"
+            dtype += ":Discrete"
         elif (df_column.max() <= 1) and (df_column.max() > 0) and (df_column.min() >= -1):
             dtype += ":Proportion"
         else:
-            dtype += ":Float"
+            dtype += ":Continuous"
+
+    if dtype.startswith("Numerical") and (n_unique == 2):
+        # if df_column.unique.min() == 0 and df_column.max() == 1:
+        if bool(np.all(np.sort(df_column.unique()) == np.array([0, 1]))):
+            dtype = "Categorical:Boolean"
 
     # Auto-decide for continuous feature limits
-    if (is_limits is None) and dtype.startswith("Continuous"):
+    if (is_limits is None) and dtype.startswith("Numerical"):
         if dtype.endswith("Proportion") or (df_column.min() == 0) or (df_column.min() == 1):  # prop or counter
             is_limits = True
         else:
@@ -391,24 +449,32 @@ def auto_naive_plot(
     print()
 
     # If continuous, show min, max, mean, and median
-    if dtype.startswith("Continuous"):
+    if dtype.startswith("Numerical"):
         print(f"Min / Max values: {df_column.min():.3f} / {df_column.max():.3f}")
         if is_show_average:
             print(f"Mean / Median values: {df_column.mean():.3f} / {df_column.median():.3f}")
         print()
 
     # Plot the data depending on the type
+
+    if is_count_order is None:
+        if dtype.startswith("Continuous"):
+            is_count_order = False
+        if dtype.startswith("Categorical"):
+            is_count_order = True
+
     try:
         if n_unique < 1:
             print("Error: Number of unique values is less than 1")
         elif n_unique == 1:
             print(f"Only one unique value: {df_column[0]}")
-        elif n_unique < threshold_big_cat:
-            pie(df_column)
-        elif n_unique < threshold_cont:
-            countplot(df_column, is_count_order)
+        elif n_unique < THRESHOLD_BIG_CAT:
+            pie(df_column, is_count_order=is_count_order)
+        elif dtype.startswith("Categorical"):
+            countplot(df_column, is_count_order=is_count_order, is_group_small_cats=is_group_small_cats)
         else:
             histplot(df_column, is_limits=is_limits)
+
     except Exception:
         print("Unable to determine feature format or plot it")
     # print('un', n_unique)
