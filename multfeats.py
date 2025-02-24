@@ -13,6 +13,7 @@ from scipy import stats
 from scipy.stats import mannwhitneyu, spearmanr
 
 from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
 
 from cm import get_corr_thr_cmap, get_pval_legend_thr_cmap
 
@@ -215,7 +216,7 @@ def dist_qq_plot(df, figsize, **kwargs):
     return shapiros
 
 
-def embeddings_creation(X, random_state=0):
+def embeddings_creation(X, n_components=2, standardize=True, random_state=0, umap_kwargs=None, tsne_kwargs=None):
     """
     Create 2D representation of data using UMAP and t-SNE.
 
@@ -223,15 +224,23 @@ def embeddings_creation(X, random_state=0):
     ----------
     X : array-like, shape (n_samples, n_features)
         The input data for dimensionality reduction.
+    n_components : int, optional, default=2
+        Number of dimensions for the reduced representation.
+    standardize : bool, optional, default=True
+        Whether to standardize the input data before applying dimensionality reduction.
     random_state : int, optional, default=0
         The seed used by the random number generator. Used to ensure reproducibility of the results.
+    umap_kwargs : dict, optional
+        Additional keyword arguments to pass to UMAP.
+    tsne_kwargs : dict, optional
+        Additional keyword arguments to pass to t-SNE.
 
     Returns
     -------
-    X_umap : array, shape (n_samples, 2)
-        The 2D UMAP embeddings of the input data.
-    X_tsne : array, shape (n_samples, 2)
-        The 2D t-SNE embeddings of the input data.
+    X_umap : array, shape (n_samples, n_components)
+        The UMAP embeddings of the input data.
+    X_tsne : array, shape (n_samples, n_components)
+        The t-SNE embeddings of the input data.
 
     Notes
     -----
@@ -246,23 +255,30 @@ def embeddings_creation(X, random_state=0):
     >>>
     >>> iris = load_iris()
     >>> X = pd.DataFrame(iris.data, columns=iris.feature_names)
-    >>> X_umap, X_tsne = embeddings_creation(X, random_state=42)
+    >>> X_umap, X_tsne = embeddings_creation(X, standardize=True, random_state=42)
     >>> X_umap.shape
     (150, 2)
     >>> X_tsne.shape
     (150, 2)
     """
-    reducer = umap.UMAP(random_state=random_state)
+
+    if standardize is True:
+        X = StandardScaler().fit_transform(X)
+
+    umap_kwargs = umap_kwargs or {}
+    tsne_kwargs = tsne_kwargs or {}
+
+    reducer = umap.UMAP(n_components=n_components, random_state=random_state, **umap_kwargs)
     X_umap = reducer.fit_transform(X)
 
-    reducer = TSNE(random_state=random_state)
+    reducer = TSNE(n_components=n_components, random_state=random_state, **tsne_kwargs)
     X_tsne = reducer.fit_transform(X)
 
     print("Shape of umap is", X_umap.shape, "; Shape of tsne is", X_tsne.shape)
     return X_umap, X_tsne
 
 
-def plot_umap_tsne(X_umap, X_tsne, labels=None, clust_name="None", unnoisy_idx=None, figsize=(16, 6)):
+def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None, figsize=(16, 6)):
     """
     Plot UMAP and t-SNE projections of data with cluster labels, optionally excluding noisy points.
 
@@ -274,8 +290,10 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, clust_name="None", unnoisy_idx=N
         2D t-SNE embeddings of the data.
     labels : array, shape (n_samples,), optional
         Cluster labels for each sample. If not provided, no coloring will be applied.
-    clust_name : str, optional, default="None"
-        Name of the clustering method used (e.g., "KMeans", "DBSCAN").
+    title_pref : str, optional, default=""
+        A preferred title prefix.
+            If not provided (empty string), the titles will be "UMAP projection" and "TSNE projection".
+            If specified, the prefix will be used at the beginning of each title, followed by the projection name.
     unnoisy_idx : array, shape (n_samples,), optional
         Indices of non-noisy points. If provided, only those points will be plotted.
     figsize : tuple, optional, default=(16, 6)
@@ -308,29 +326,32 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, clust_name="None", unnoisy_idx=N
         labels = labels.astype("str")  # TODO str for categorical palette
     fig, ax = plt.subplots(1, 2, figsize=figsize)
 
-    ax[0].set_title("%s clusterization and UMAP projection" % clust_name)
-    ax[1].set_title("%s clusterization and TSNE projection" % clust_name)
+    if title_pref is not "":
+        title_pref += " and "
+    ax[0].set_title(f"{title_pref}UMAP projection")
+    ax[1].set_title(f"{title_pref}TSNE projection")
+
+    palette = "tab10"
+    legend = "full"
 
     if unnoisy_idx is None:
-        sns.scatterplot(
-            x=X_umap[:, 0], y=X_umap[:, 1], hue=labels, legend="full", ax=ax[0]
-        )
-        sns.scatterplot(
-            x=X_tsne[:, 0], y=X_tsne[:, 1], hue=labels, legend="full", ax=ax[1]
-        )
+        sns.scatterplot(x=X_umap[:, 0], y=X_umap[:, 1], hue=labels, legend=legend, palette=palette, ax=ax[0])
+        sns.scatterplot(x=X_tsne[:, 0], y=X_tsne[:, 1], hue=labels, legend=legend, palette=palette, ax=ax[1])
     else:
         sns.scatterplot(
             x=X_umap[unnoisy_idx, 0],
             y=X_umap[unnoisy_idx, 1],
             hue=labels[unnoisy_idx],
-            legend="full",
+            legend=legend,
+            palette=palette,
             ax=ax[0],
         )
         sns.scatterplot(
             x=X_tsne[unnoisy_idx, 0],
             y=X_tsne[unnoisy_idx, 1],
             hue=labels[unnoisy_idx],
-            legend="full",
+            legend=legend,
+            palette=palette,
             ax=ax[1],
         )
 
