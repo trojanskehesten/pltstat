@@ -6,3 +6,4 @@ rpy2
 umap-learn
 scipy
 scikit-learn
+phik

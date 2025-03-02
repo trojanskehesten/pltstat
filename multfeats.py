@@ -7,14 +7,15 @@ import umap.umap_ as umap
 
 import numpy as np
 import pandas as pd
-
+from phik import phik_matrix
 
 from scipy import stats
-from scipy.stats import mannwhitneyu, spearmanr
+from scipy.stats import mannwhitneyu, spearmanr, kruskal, chi2_contingency
 
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
+import cm
 from cm import get_corr_thr_cmap, get_pval_legend_thr_cmap
 
 from corr_methods import cramer_v
@@ -326,7 +327,7 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
         labels = labels.astype("str")  # TODO str for categorical palette
     fig, ax = plt.subplots(1, 2, figsize=figsize)
 
-    if title_pref is not "":
+    if title_pref != "":
         title_pref += " and "
     ax[0].set_title(f"{title_pref}UMAP projection")
     ax[1].set_title(f"{title_pref}TSNE projection")
@@ -358,13 +359,15 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
 
 def heatmap_corr(
     df,
+    x=None,
+    y=None,
     corr_type="pearson",
-    figsize=(30, 20),
-    fmt=".2f",
-    index=None,
-    cols=None,
     threshold=None,
+    annot=True,
+    fmt=".2f",
+    figsize=(30, 20),
     linecolor="white",
+    ax=None,
     **kwargs,
 ):
     """
@@ -374,22 +377,28 @@ def heatmap_corr(
     ----------
     df : DataFrame
        Input DataFrame containing the data to compute the correlation matrix.
-    corr_type : str, optional, default="pearson"
-       The method to compute correlation. Supported options include "pearson",
-       "kendall", "spearman", and "cramer_v" for categorical data.
-    figsize : tuple, optional, default=(30, 20)
-       The size of the figure (width, height) in inches.
-    fmt : str, optional, default=".2f"
-       The format string for the annotation of correlation values in the heatmap.
-    index : list or array, optional
-       List or array of features to be used as rows in the correlation matrix. If None, all features will be used.
-    cols : list or array, optional
+    x : list or array, optional
        List or array of features to be used as columns in the correlation matrix. If None, all features will be used.
+    y : list or array, optional
+       List or array of features to be used as rows in the correlation matrix. If None, all features will be used.
+    corr_type : str, optional, default="pearson"
+           The method to compute correlation. Supported options include "pearson",
+           "kendall", "spearman", "cramer_v" for categorical data, and "phik".
+           If "phik" is chosen, the `phik_corrs` function is called.
     threshold : float, optional
        Threshold value for customizing the heatmap colors. If specified, only correlations
        above this threshold will be displayed.
+    annot : bool, optional
+        If True, annotate the cells in the heatmap with the correlation values. Default is True.
+    fmt : str, optional, default=".2f"
+       The format string for the annotation of correlation values in the heatmap.
+    figsize : tuple, optional, default=(30, 20)
+       The size of the figure (width, height) in inches.
+       If `ax` is provided, `figsize` will be ignored.
     linecolor : str, optional, default="white"
        The color of the lines separating the cells in the heatmap.
+    ax : matplotlib.axes.Axes or None, optional, default=None
+        The axes on which to draw the plot. If None, a new figure and axes are created.
     **kwargs : keyword arguments
        Additional parameters passed to `sns.heatmap`.
 
@@ -415,64 +424,132 @@ def heatmap_corr(
     >>> df = pd.DataFrame(np.random.rand(10, 5), columns=list("ABCDE"))
     >>> heatmap_corr(df, corr_type="pearson")
     """
-    plt.figure(figsize=figsize)
-
     if corr_type == "cramer_v":
         corr_type = cramer_v
+        # df.corr works only with numerical data, correct it:
+        if (y is not None) and (x is not None):
+            cols = np.concatenate((x, y))
+        else:
+            cols = df.columns
+        for col in cols:
+            df.loc[:, col] = pd.Categorical(df.loc[:, col]).codes
+
+    if corr_type == "phik":
+        phik_corrs(
+            df=df,
+            x=x,
+            y=y,
+            threshold=threshold,
+            annot=annot,
+            fmt=fmt,
+            figsize=figsize,
+            ax=ax,
+            **kwargs,
+        )
+        return
+
+    # Create axes if not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
 
     corr = df.corr(corr_type)
 
-    if (index is not None) or (cols is not None):
-        if (index is not None) and (cols is not None):
-            corr = corr.loc[index, cols]
-        elif index is not None:
-            corr = corr.loc[index, :]
-        elif cols is not None:
-            corr = corr.loc[:, cols]
+    if (y is not None) or (x is not None):
+        if (y is not None) and (x is not None):
+            corr = corr.loc[y, x]
+        elif y is not None:
+            corr = corr.loc[y, :]
+        elif x is not None:
+            corr = corr.loc[:, x]
 
     if (threshold is not None) and (corr_type == cramer_v):
-        interval = (1 - threshold) / 2
-        cmap = [
-            (0, "White"),
-            (0 + threshold, "White"),
-            # (0 + threshold + interval, 'IndianRed'),
-            (1, "Red"),
-        ]
-        cmap = LinearSegmentedColormap.from_list("custom", cmap)
         vmin = 0
+        cmap = cm.get_corr_thr_cmap(threshold=threshold, vmin=vmin)
     elif threshold is not None:
-        interval = (1 - threshold) / 2
         threshold /= 2
-        interval /= 2
-
-        cmap = [
-            (0, "Blue"),
-            # (0.5 - threshold - interval, 'LightBlue'),
-            (0.5 - threshold, "White"),
-            (0.5 + threshold, "White"),
-            # (0.5 + threshold + interval, 'IndianRed'),
-            (1, "Red"),
-        ]
-        cmap = LinearSegmentedColormap.from_list("custom", cmap)
         vmin = -1
+        cmap = cm.get_corr_thr_cmap(threshold=threshold, vmin=vmin)
+
     else:
         cmap = "coolwarm"
         vmin = -1
 
     sns.heatmap(
         corr,
-        annot=True,
+        annot=annot,
         fmt=fmt,
         vmin=vmin,
         vmax=1,
         linewidths=0.5,
         linecolor=linecolor,
         cmap=cmap,
+        ax=ax,
         **kwargs,
     )
 
 
 def r_pval(
+    df,
+    x=None,
+    y=None,
+    corr_type="pearson",
+    threshold=None,
+    annot=True,
+    fmt_corrs=".2f",
+    fmt_pvals=".2f",
+    figsize=(30, 20),
+    linecolor="white",
+    **kwargs,
+):
+    """"""
+    fig, ax = plt.subplots(1, 2, figsize=figsize)
+
+    # Create corrs:
+    heatmap_corr(
+        df,
+        x=x,
+        y=y,
+        corr_type=corr_type,
+        threshold=threshold,
+        annot=annot,
+        fmt=fmt_corrs,
+        linecolor=linecolor,
+        ax=ax[0],
+        **kwargs,
+    )
+
+    # n n
+    CORR SPE PEAR            [PVALS]
+
+    # n c
+    def pvals_num(df, cat_cols, num_cols)
+    def pvals_cat(df, cat_cols1=None, cat_cols2=None)
+    def pvals_num_cat(df, num_cols1=None, num_cols2=None)
+    [PHIK?]                  MW KRUSKAL
+
+    # c c
+    [CRAMER V]               CHI2 FISHER
+
+    # Create p-values:
+    cmap, cbar_kws = get_pval_legend_thr_cmap()
+    sns.heatmap(
+        df_pvals,
+        vmin=0,
+        vmax=1,
+        cmap=cmap,
+        annot=annot,
+        fmt=fmt_pvals,
+        linewidths=1,
+        cbar_kws=cbar_kws,
+        ax=ax[1],
+    )
+    ax[1].set_title("Spearman correlations, p-value")
+    xticks = df_pvals.columns
+    ax[1].set_xticks(np.arange(len(xticks)) + 0.5, xticks)
+
+
+
+def r_pval2(
     df,
     corr_type="pearson",
     figsize=(30, 20),
@@ -571,7 +648,7 @@ def r_pval(
     )
     if not show_pvals:
         ax = [ax]
-    if is_T:
+    if is_T is True:
         df_pvals = df_pvals.T
 
     cmap_corrs = get_corr_thr_cmap(threshold=cmap_thr)
@@ -610,15 +687,103 @@ def r_pval(
     return df_corrs, df_pvals
 
 
-def mw_pval(
+def pvals_num(
+        df,
+        num_cols1=None,
+        num_cols2=None,
+        figsize=None,
+        method='auto',
+        fmt=".2f",
+        annot=True,
+        alpha=0.05,
+        annot_rot=0,
+        annot_size=None,
+        ax=None,
+        **kwargs,
+):
+    if method == 'pearson':
+        stat_func = pearsonr
+        stat_method = "Pearson R"
+    elif method == 'spearman':
+        stat_func = spearmanr
+        stat_method = "Spearman R"
+
+    cols = df.columns
+    num_cols1 = num_cols1 | cols
+    num_cols2 = num_cols2 | cols
+
+    df_pvals = pd.DataFrame(index=num_cols1, columns=num_cols2, dtype="float64")
+    for cat_col1 in num_cols1:
+        for cat_col2 in num_cols2:
+            df_subset = df[[num_cols1, num_cols2]].dropna()
+            p_value = stats.pearsonr(df_subset[num_cols1], df_subset[num_cols2])[1]
+
+            df_pvals.loc[num_cols1, num_cols2] = p_value
+
+    # Plot dataframe:
+    plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
+                annot_size=annot_size, **kwargs)
+
+    return df_pvals
+
+
+def pvals_cat(
+        df,
+        cat_cols1=None,
+        cat_cols2=None,
+        figsize=None,
+        # method='auto',
+        fmt=".2f",
+        annot=True,
+        alpha=0.05,
+        annot_rot=0,
+        annot_size=None,
+        ax=None,
+        **kwargs,
+    ):
+    # TODO Add Fisher after update
+    # if method == 'auto':
+    #     stat_func = lambda crosstab_df: fisher(crosstab_df) if crosstab_df.min(axis=None) < 5 else chi2_contingency(crosstab_df)
+    # elif method == 'fisher':
+    #     stat_func = lambda crosstab_df: fisher(crosstab_df)
+    # elif method == 'chi2':
+    stat_func = lambda ct_df: chi2_contingency(ct_df)
+    stat_method = 'chi2'
+
+    cols = df.columns
+    cat_cols1 = cat_cols1 | cols
+    cat_cols2 = cat_cols2 | cols
+
+    df_pvals = pd.DataFrame(index=cat_cols1, columns=cat_cols2, dtype="float64")
+    for cat_col1 in cat_cols1:
+        for cat_col2 in cat_cols2:
+            df_subset = df[[cat_col1, cat_col2]].dropna()
+            crosstab_df = pd.crosstab(df_subset[cat_col1], df_subset[cat_col2])
+            p_value = stat_func(crosstab_df)[1]
+
+            df_pvals.loc[cat_col1, cat_col2] = p_value
+
+    # Plot dataframe:
+    plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
+                annot_size=annot_size, **kwargs)
+
+    return df_pvals
+
+
+def pvals_num_cat(
     df,
     cat_cols,
     num_cols,
-    figsize,
+    alpha=0.5,
+    figsize=None,
+    fmt=".2f",
+    method='auto',
     is_T=False,
     annot=True,
     annot_rot=0,
     annot_size=None,
+    ax=None,
+    **kwargs,
 ):
     """
     Create Heatmaps with Mann-Whitney p-values between numerical data divided by
@@ -633,29 +798,44 @@ def mw_pval(
     :param annot_size: fontsize of annotation, int
     :return: pandas.DataFrames with Mann-Whitney p-values
     """
+    if method == 'auto':
+        stat_func = lambda n: mannwhitneyu if n == 2 else kruskal
+    elif method == 'mw':
+        stat_func = lambda n: mannwhitneyu
+    elif method == 'kruskal':
+        stat_func = lambda n: kruskal
+
     df_pvals = pd.DataFrame(index=cat_cols, columns=num_cols, dtype="float64")
     for cat_col in cat_cols:
         for num_col in num_cols:
             df_subset = df[[cat_col, num_col]].dropna()
-            if df_subset.loc[:, cat_col].nunique() < 2:
+            n_cats = df_subset.loc[:, cat_col].nunique()
+
+            if n_cats < 2:
                 # Less than 2 different values of categorical feature in the subset
                 p = np.nan
             else:
-                x = df_subset.loc[
-                    df_subset.loc[:, cat_col] == df_subset.loc[:, cat_col].unique()[0],
-                    num_col,
-                ]
-                y = df_subset.loc[
-                    df_subset.loc[:, cat_col] == df_subset.loc[:, cat_col].unique()[1],
-                    num_col,
-                ]
-                p = mannwhitneyu(x, y)[1]
+                x = df_subset.groupby(cat_col)[num_col].agg(list).to_numpy()
+                p = stat_func(n_cats)(*x)[1]
+
             df_pvals.loc[cat_col, num_col] = p
 
-    plt.figure(figsize=figsize)
     if is_T:
         df_pvals = df_pvals.T
-    cmap, cbar_kws = get_pval_legend_thr_cmap()
+
+    # Plot dataframe:
+    stat_method = {"mw": "Mann-Whitney", "kruskal": "Kruskal", "auto": "Auto Mann-Whitney or Kruskal"}[method]
+    plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=0,
+                annot_size=annot_size, **kwargs)
+
+    return df_pvals
+
+
+def plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=None, alpha=0.5, annot_rot=0, annot_size=None, **kwargs):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+    cmap, cbar_kws = get_pval_legend_thr_cmap(alpha=alpha)
     sns.heatmap(
         df_pvals,
         vmin=0,
@@ -666,12 +846,14 @@ def mw_pval(
         linewidths=1,
         cbar_kws=cbar_kws,
         annot_kws={"rotation": annot_rot, "fontsize": annot_size},
+        ax=ax,
+        **kwargs,
     )
     xticks = df_pvals.columns
 
     plt.xticks(np.arange(len(xticks)) + 0.5, xticks)
-    plt.title("Mann-Whitney p-values")
-    return df_pvals
+
+    plt.title(f"{stat_method} p-values")
 
 
 def phik_corrs(
@@ -684,6 +866,7 @@ def phik_corrs(
     figsize=None,
     annot_rot=0,
     annot_size=None,
+    ax=None,
     **kwargs,
 ):
     """
@@ -708,10 +891,13 @@ def phik_corrs(
         Format for displaying correlation values in the heatmap. Default is ".2f".
     figsize : tuple, optional
         Figure size for the plot. Default is None, which uses the default size.
+        If `ax` is provided, `figsize` will be ignored.
     annot_rot : int, optional
         Rotation angle for the annotations. Default is 0.
     annot_size : int, optional
         Font size for the annotations. Default is None.
+    ax : matplotlib.axes.Axes or None, optional, default=None
+        The axes on which to draw the plot. If None, a new figure and axes are created.
     **kwargs : keyword arguments
         Additional arguments passed to `sns.heatmap`.
 
@@ -746,7 +932,11 @@ def phik_corrs(
         df_phik = df_phik.loc[y, x]
     else:
         df_phik = df.phik_matrix()
-    plt.figure(figsize=figsize)
+
+    # Create axes if not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
     sns.heatmap(
         df_phik,
         cmap=cmap,
@@ -755,5 +945,6 @@ def phik_corrs(
         annot=annot,
         fmt=fmt,
         annot_kws={"rotation": annot_rot, "fontsize": annot_size},
+        ax=ax,
         **kwargs,
     )

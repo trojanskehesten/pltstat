@@ -286,7 +286,7 @@ def boxplot(
     fig_return=False,
     alpha=0.05,
     ax=None,
-    palette="tab10",
+    palette="pastel",
     **kwargs,
 ):
     """
@@ -311,7 +311,7 @@ def boxplot(
         The significance level for the statistical test. Determines the threshold for p-value coloring.
     ax : matplotlib.axes.Axes, optional, default None
         The axes on which to plot the boxplot. If None, a new axes object is created.
-    palette : str or list, optional, default 'tab10'
+    palette : str or list, optional, default 'pastel'
         The color palette to use for the plot. It can be a predefined palette name or a list of colors.
     **kwargs : additional keyword arguments, optional
         Additional arguments passed to `sns.boxplot()` for further customization of the plot.
@@ -373,6 +373,9 @@ def boxplot(
     if cat_order is not None:
         cat_order = np.array(cat_order).astype("str")
         cat_order = cat_order[np.isin(cat_order, df[cat_feat].unique())]
+    else:
+        cat_order = df[cat_feat].astype("str").unique()
+        cat_order = np.sort(cat_order)
 
     n_cat_feat = len(df[cat_feat].unique())
     n_cat_feat_tr1 = 2
@@ -409,6 +412,7 @@ def boxplot(
         fliersize=1,
         showmeans=True,
         order=cat_order,
+        hue_order=cat_order,
         ax=ax,
         palette=palette,
         meanprops={
@@ -457,7 +461,7 @@ def dis_box_plot(
     cat_order=None,
     stat="count",
     figsize=(20, 3.5),
-    palette="tab10",
+    palette="pastel",
     ax_return=False,
 ):
     """
@@ -484,7 +488,7 @@ def dis_box_plot(
     - 'frequency': shows the raw count in each bin.
     figsize : tuple of int, optional, default (20, 3.5)
         The size of the figure to be created, in inches (width, height).
-    palette : str or list, optional, default 'tab10'
+    palette : str or list, optional, default 'pastel'
         The color palette to use for the plot. Can be a predefined palette name or a list of colors.
     ax_return : bool, optional, default False
         If True, the function will return the axes object(s) for further customization.

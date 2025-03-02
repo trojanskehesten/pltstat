@@ -48,9 +48,10 @@ def cramer_v_by_obs(obs):
     1.0
     """
     chi2 = stats.chi2_contingency(obs, correction=False)[0]
-    n = np.sum(obs).sum()
+    n = obs.sum(axis=0).sum(axis=0)
     min_dim = min(obs.shape) - 1
     corr_cramer_v = np.sqrt((chi2 / n) / min_dim)
+    corr_cramer_v = float(corr_cramer_v)
     return corr_cramer_v
 
 
@@ -97,6 +98,23 @@ def cramer_v(data1, data2):
     obs = pd.crosstab(data1, data2)
     corr_cramer_v = cramer_v_by_obs(obs)
     return corr_cramer_v
+
+
+def mw(data1, data2):
+    x =
+    p_value = stats.mannwhitneyu(data1. data2)[1]
+
+    p = stats.kruskal(*data)[1]
+
+    x = df[df[cat_feat] == df[cat_feat].unique()[0]][num_feat]
+    y = df[df[cat_feat] == df[cat_feat].unique()[1]][num_feat]
+    p = mannwhitneyu(x, y)[1]
+
+elif (n_cat_feat > n_cat_feat_tr1) and (n_cat_feat <= n_cat_feat_tr2):
+x = df.groupby(cat_feat)[num_feat].agg(list).to_numpy()
+p = kruskal(*x)[1]
+
+    return p_value
 
 
 # TODO: Fisher?
