@@ -100,23 +100,6 @@ def cramer_v(data1, data2):
     return corr_cramer_v
 
 
-def mw(data1, data2):
-    x =
-    p_value = stats.mannwhitneyu(data1. data2)[1]
-
-    p = stats.kruskal(*data)[1]
-
-    x = df[df[cat_feat] == df[cat_feat].unique()[0]][num_feat]
-    y = df[df[cat_feat] == df[cat_feat].unique()[1]][num_feat]
-    p = mannwhitneyu(x, y)[1]
-
-elif (n_cat_feat > n_cat_feat_tr1) and (n_cat_feat <= n_cat_feat_tr2):
-x = df.groupby(cat_feat)[num_feat].agg(list).to_numpy()
-p = kruskal(*x)[1]
-
-    return p_value
-
-
 # TODO: Fisher?
 # p_value = _stats_r.fisher_test(crosstab_df.values)[0][0]
 # g, p_value = chi2_contingency(crosstab_df)[:2]

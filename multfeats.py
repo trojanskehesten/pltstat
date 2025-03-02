@@ -10,10 +10,11 @@ import pandas as pd
 from phik import phik_matrix
 
 from scipy import stats
-from scipy.stats import mannwhitneyu, spearmanr, kruskal, chi2_contingency
+from scipy.stats import mannwhitneyu, kruskal, spearmanr, pearsonr, chi2_contingency
 
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import matthews_corrcoef
 
 import cm
 from cm import get_corr_thr_cmap, get_pval_legend_thr_cmap
@@ -383,7 +384,7 @@ def heatmap_corr(
        List or array of features to be used as rows in the correlation matrix. If None, all features will be used.
     corr_type : str, optional, default="pearson"
            The method to compute correlation. Supported options include "pearson",
-           "kendall", "spearman", "cramer_v" for categorical data, and "phik".
+           "kendall", "spearman", "cramer_v" for categorical data, "matthews" for binary data, and "phik".
            If "phik" is chosen, the `phik_corrs` function is called.
     threshold : float, optional
        Threshold value for customizing the heatmap colors. If specified, only correlations
@@ -424,15 +425,23 @@ def heatmap_corr(
     >>> df = pd.DataFrame(np.random.rand(10, 5), columns=list("ABCDE"))
     >>> heatmap_corr(df, corr_type="pearson")
     """
-    if corr_type == "cramer_v":
-        corr_type = cramer_v
+    if corr_type in ["matthews", "cramer_v"]:
+
         # df.corr works only with numerical data, correct it:
         if (y is not None) and (x is not None):
             cols = np.concatenate((x, y))
         else:
             cols = df.columns
-        for col in cols:
-            df.loc[:, col] = pd.Categorical(df.loc[:, col]).codes
+
+        if corr_type == "cramer_v":
+            corr_type = cramer_v
+            for col in cols:
+                df.loc[:, col] = pd.Categorical(df.loc[:, col]).codes
+        else:
+            corr_type = matthews_corrcoef
+            for col in cols:
+                col_un_vals = df.loc[:, col].unique()
+                df.loc[:, col] = df.loc[:, col].map({col_un_vals[0]: 0, col_un_vals[1]: 1})
 
     if corr_type == "phik":
         phik_corrs(
@@ -488,205 +497,6 @@ def heatmap_corr(
     )
 
 
-def r_pval(
-    df,
-    x=None,
-    y=None,
-    corr_type="pearson",
-    threshold=None,
-    annot=True,
-    fmt_corrs=".2f",
-    fmt_pvals=".2f",
-    figsize=(30, 20),
-    linecolor="white",
-    **kwargs,
-):
-    """"""
-    fig, ax = plt.subplots(1, 2, figsize=figsize)
-
-    # Create corrs:
-    heatmap_corr(
-        df,
-        x=x,
-        y=y,
-        corr_type=corr_type,
-        threshold=threshold,
-        annot=annot,
-        fmt=fmt_corrs,
-        linecolor=linecolor,
-        ax=ax[0],
-        **kwargs,
-    )
-
-    # n n
-    CORR SPE PEAR            [PVALS]
-
-    # n c
-    def pvals_num(df, cat_cols, num_cols)
-    def pvals_cat(df, cat_cols1=None, cat_cols2=None)
-    def pvals_num_cat(df, num_cols1=None, num_cols2=None)
-    [PHIK?]                  MW KRUSKAL
-
-    # c c
-    [CRAMER V]               CHI2 FISHER
-
-    # Create p-values:
-    cmap, cbar_kws = get_pval_legend_thr_cmap()
-    sns.heatmap(
-        df_pvals,
-        vmin=0,
-        vmax=1,
-        cmap=cmap,
-        annot=annot,
-        fmt=fmt_pvals,
-        linewidths=1,
-        cbar_kws=cbar_kws,
-        ax=ax[1],
-    )
-    ax[1].set_title("Spearman correlations, p-value")
-    xticks = df_pvals.columns
-    ax[1].set_xticks(np.arange(len(xticks)) + 0.5, xticks)
-
-
-
-def r_pval2(
-    df,
-    corr_type="pearson",
-    figsize=(30, 20),
-    index=None,
-    cols=None,
-    cmap_thr=0.8,
-    is_T=False,
-    annot=True,
-    show_pvals=True,
-    annot_rot=0,
-    **kwargs,
-):
-    """
-    Create Heatmaps with correlations and p-values by Spearman's statistic.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        DataFrame for analysis.
-    dm_corr_cols : list
-        Demographic numeric columns.
-    stat_cols : list
-        Statistical numeric columns.
-    figsize : tuple
-        Size of the figure.
-    cmap_thr : float, optional
-        Threshold for cmap significance. Default is 0.8.
-    is_T : bool, optional
-        If True, pivot the table. Default is False.
-    annot : bool, optional
-        If True, annotate cells. Default is True.
-    show_pvals : bool, optional
-        If True, display p-values in the second heatmap. Default is True.
-    annot_rot : int, optional
-        Rotation angle for annotation. Default is 0.
-    **kwargs : keyword arguments
-        Additional arguments passed to `sns.heatmap`.
-
-    Returns
-    -------
-    df_corrs : pandas.DataFrame
-        DataFrame of Spearman correlation coefficients.
-    df_pvals : pandas.DataFrame
-        DataFrame of Spearman p-values.
-
-    Examples
-    --------
-    Create a DataFrame with random data and compute correlation and p-values:
-
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> np.random.seed(42)
-    >>> df = pd.DataFrame({
-    >>>     'age': np.random.randint(18, 70, size=100),
-    >>>     'income': np.random.randint(20000, 100000, size=100),
-    >>>     'education_years': np.random.randint(10, 20, size=100)
-    >>> })
-    >>> dm_corr_cols = ['age', 'education_years']
-    >>> stat_cols = ['income']
-    >>> figsize = (10, 6)
-    >>> df_corrs, df_pvals = r_pval(df, dm_corr_cols, stat_cols, figsize)
-    >>> print(df_corrs)
-    >>> print(df_pvals)
-    """
-
-    """Create Heatmaps with correlations and p-values by Spearman's statistic
-    :param df: pd.DataFrame for analysis
-    :param dm_corr_cols: Demographic numeric columns
-    :param stat_cols: Statistical numeric columns
-    :param figsize: tuple, figure size
-    :param cmap_thr: cmap threshold of correlations significancy
-    :param is_T: pivoting table, bool
-    :param annot: add annotation to cells, bool
-    :param show_pvals: plot heatmap with p-values, bool
-    :param annot_rot: rotation angle of annotation, int
-    :return: pandas.DataFrames with p-values and with correlation coefficients
-    """
-    df_pvals = pd.DataFrame(index=dm_corr_cols, columns=stat_cols, dtype="float64")
-    df_corrs = pd.DataFrame(index=dm_corr_cols, columns=stat_cols, dtype="float64")
-    for dm_corr_col in dm_corr_cols:
-        for stat_col in stat_cols:
-            df_subset = df[[dm_corr_col, stat_col]].dropna()
-            x = df_subset.loc[:, dm_corr_col]
-            y = df_subset.loc[:, stat_col]
-            corr, p = spearmanr(x, y)
-            df_pvals.loc[dm_corr_col, stat_col] = p
-            df_corrs.loc[dm_corr_col, stat_col] = corr
-
-    if show_pvals:
-        nrows = 2
-    else:
-        nrows = 1
-
-    fig, ax = plt.subplots(
-        nrows=nrows, ncols=1, figsize=figsize, constrained_layout=True
-    )
-    if not show_pvals:
-        ax = [ax]
-    if is_T is True:
-        df_pvals = df_pvals.T
-
-    cmap_corrs = get_corr_thr_cmap(threshold=cmap_thr)
-    sns.heatmap(
-        df_corrs,
-        vmin=-1,
-        vmax=1,
-        cmap=cmap_corrs,
-        annot=annot,
-        fmt=".1f",
-        linewidths=1,
-        ax=ax[0],
-        annot_kws={"rotation": annot_rot},
-        **kwargs,
-    )
-    ax[0].set_title("Spearman correlations, correlation coefficient")
-    xticks = df_corrs.columns
-    ax[0].set_xticks(np.arange(len(xticks)) + 0.5, xticks)
-    if show_pvals:
-        cmap, cbar_kws = get_pval_legend_thr_cmap()
-        sns.heatmap(
-            df_pvals,
-            vmin=0,
-            vmax=1,
-            cmap=cmap,
-            annot=annot,
-            fmt=".2f",
-            linewidths=1,
-            cbar_kws=cbar_kws,
-            ax=ax[1],
-        )
-        ax[1].set_title("Spearman correlations, p-value")
-        xticks = df_pvals.columns
-        ax[1].set_xticks(np.arange(len(xticks)) + 0.5, xticks)
-
-    return df_corrs, df_pvals
-
-
 def pvals_num(
         df,
         num_cols1=None,
@@ -713,15 +523,15 @@ def pvals_num(
     num_cols2 = num_cols2 | cols
 
     df_pvals = pd.DataFrame(index=num_cols1, columns=num_cols2, dtype="float64")
-    for cat_col1 in num_cols1:
-        for cat_col2 in num_cols2:
-            df_subset = df[[num_cols1, num_cols2]].dropna()
-            p_value = stats.pearsonr(df_subset[num_cols1], df_subset[num_cols2])[1]
+    for num_col1 in num_cols1:
+        for num_col2 in num_cols2:
+            df_subset = df[[num_col1, num_col2]].dropna()
+            p_value = stats.pearsonr(df_subset[num_col1], df_subset[num_col2])[1]
 
-            df_pvals.loc[num_cols1, num_cols2] = p_value
+            df_pvals.loc[num_col1, num_col2] = p_value
 
     # Plot dataframe:
-    plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
+    _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
                 annot_size=annot_size, **kwargs)
 
     return df_pvals
@@ -764,7 +574,7 @@ def pvals_cat(
             df_pvals.loc[cat_col1, cat_col2] = p_value
 
     # Plot dataframe:
-    plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
+    _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
                 annot_size=annot_size, **kwargs)
 
     return df_pvals
@@ -825,13 +635,13 @@ def pvals_num_cat(
 
     # Plot dataframe:
     stat_method = {"mw": "Mann-Whitney", "kruskal": "Kruskal", "auto": "Auto Mann-Whitney or Kruskal"}[method]
-    plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=0,
+    _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
                 annot_size=annot_size, **kwargs)
 
     return df_pvals
 
 
-def plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=None, alpha=0.5, annot_rot=0, annot_size=None, **kwargs):
+def _plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=None, alpha=0.5, annot_rot=0, annot_size=None, **kwargs):
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=figsize)
 
@@ -948,3 +758,201 @@ def phik_corrs(
         ax=ax,
         **kwargs,
     )
+
+
+# def r_pval(
+#     df,
+#     x=None,
+#     y=None,
+#     corr_type="pearson",
+#     threshold=None,
+#     annot=True,
+#     fmt_corrs=".2f",
+#     fmt_pvals=".2f",
+#     figsize=(30, 20),
+#     linecolor="white",
+#     **kwargs,
+# ):
+#     """"""
+#     fig, ax = plt.subplots(1, 2, figsize=figsize)
+#
+#     # Create corrs:
+#     heatmap_corr(
+#         df,
+#         x=x,
+#         y=y,
+#         corr_type=corr_type,
+#         threshold=threshold,
+#         annot=annot,
+#         fmt=fmt_corrs,
+#         linecolor=linecolor,
+#         ax=ax[0],
+#         **kwargs,
+#     )
+#
+#     # n n
+#     CORR SPE PEAR            [PVALS]
+#
+#     # n c
+#     def pvals_num(df, cat_cols, num_cols)
+#     def pvals_cat(df, cat_cols1=None, cat_cols2=None)
+#     def pvals_num_cat(df, num_cols1=None, num_cols2=None)
+#     [PHIK?]                  MW KRUSKAL
+#
+#     # c c
+#     [CRAMER V]               CHI2 FISHER
+#
+#     # Create p-values:
+#     cmap, cbar_kws = get_pval_legend_thr_cmap()
+#     sns.heatmap(
+#         df_pvals,
+#         vmin=0,
+#         vmax=1,
+#         cmap=cmap,
+#         annot=annot,
+#         fmt=fmt_pvals,
+#         linewidths=1,
+#         cbar_kws=cbar_kws,
+#         ax=ax[1],
+#     )
+#     ax[1].set_title("Spearman correlations, p-value")
+#     xticks = df_pvals.columns
+#     ax[1].set_xticks(np.arange(len(xticks)) + 0.5, xticks)
+#
+#
+# def r_pval2(
+#     df,
+#     corr_type="pearson",
+#     figsize=(30, 20),
+#     index=None,
+#     cols=None,
+#     cmap_thr=0.8,
+#     is_T=False,
+#     annot=True,
+#     show_pvals=True,
+#     annot_rot=0,
+#     **kwargs,
+# ):
+#     """
+#     Create Heatmaps with correlations and p-values by Spearman's statistic.
+#
+#     Parameters
+#     ----------
+#     df : pandas.DataFrame
+#         DataFrame for analysis.
+#     dm_corr_cols : list
+#         Demographic numeric columns.
+#     stat_cols : list
+#         Statistical numeric columns.
+#     figsize : tuple
+#         Size of the figure.
+#     cmap_thr : float, optional
+#         Threshold for cmap significance. Default is 0.8.
+#     is_T : bool, optional
+#         If True, pivot the table. Default is False.
+#     annot : bool, optional
+#         If True, annotate cells. Default is True.
+#     show_pvals : bool, optional
+#         If True, display p-values in the second heatmap. Default is True.
+#     annot_rot : int, optional
+#         Rotation angle for annotation. Default is 0.
+#     **kwargs : keyword arguments
+#         Additional arguments passed to `sns.heatmap`.
+#
+#     Returns
+#     -------
+#     df_corrs : pandas.DataFrame
+#         DataFrame of Spearman correlation coefficients.
+#     df_pvals : pandas.DataFrame
+#         DataFrame of Spearman p-values.
+#
+#     Examples
+#     --------
+#     Create a DataFrame with random data and compute correlation and p-values:
+#
+#     >>> import numpy as np
+#     >>> import pandas as pd
+#     >>> np.random.seed(42)
+#     >>> df = pd.DataFrame({
+#     >>>     'age': np.random.randint(18, 70, size=100),
+#     >>>     'income': np.random.randint(20000, 100000, size=100),
+#     >>>     'education_years': np.random.randint(10, 20, size=100)
+#     >>> })
+#     >>> dm_corr_cols = ['age', 'education_years']
+#     >>> stat_cols = ['income']
+#     >>> figsize = (10, 6)
+#     >>> df_corrs, df_pvals = r_pval(df, dm_corr_cols, stat_cols, figsize)
+#     >>> print(df_corrs)
+#     >>> print(df_pvals)
+#     """
+#
+#     """Create Heatmaps with correlations and p-values by Spearman's statistic
+#     :param df: pd.DataFrame for analysis
+#     :param dm_corr_cols: Demographic numeric columns
+#     :param stat_cols: Statistical numeric columns
+#     :param figsize: tuple, figure size
+#     :param cmap_thr: cmap threshold of correlations significancy
+#     :param is_T: pivoting table, bool
+#     :param annot: add annotation to cells, bool
+#     :param show_pvals: plot heatmap with p-values, bool
+#     :param annot_rot: rotation angle of annotation, int
+#     :return: pandas.DataFrames with p-values and with correlation coefficients
+#     """
+#     df_pvals = pd.DataFrame(index=dm_corr_cols, columns=stat_cols, dtype="float64")
+#     df_corrs = pd.DataFrame(index=dm_corr_cols, columns=stat_cols, dtype="float64")
+#     for dm_corr_col in dm_corr_cols:
+#         for stat_col in stat_cols:
+#             df_subset = df[[dm_corr_col, stat_col]].dropna()
+#             x = df_subset.loc[:, dm_corr_col]
+#             y = df_subset.loc[:, stat_col]
+#             corr, p = spearmanr(x, y)
+#             df_pvals.loc[dm_corr_col, stat_col] = p
+#             df_corrs.loc[dm_corr_col, stat_col] = corr
+#
+#     if show_pvals:
+#         nrows = 2
+#     else:
+#         nrows = 1
+#
+#     fig, ax = plt.subplots(
+#         nrows=nrows, ncols=1, figsize=figsize, constrained_layout=True
+#     )
+#     if not show_pvals:
+#         ax = [ax]
+#     if is_T is True:
+#         df_pvals = df_pvals.T
+#
+#     cmap_corrs = get_corr_thr_cmap(threshold=cmap_thr)
+#     sns.heatmap(
+#         df_corrs,
+#         vmin=-1,
+#         vmax=1,
+#         cmap=cmap_corrs,
+#         annot=annot,
+#         fmt=".1f",
+#         linewidths=1,
+#         ax=ax[0],
+#         annot_kws={"rotation": annot_rot},
+#         **kwargs,
+#     )
+#     ax[0].set_title("Spearman correlations, correlation coefficient")
+#     xticks = df_corrs.columns
+#     ax[0].set_xticks(np.arange(len(xticks)) + 0.5, xticks)
+#     if show_pvals:
+#         cmap, cbar_kws = get_pval_legend_thr_cmap()
+#         sns.heatmap(
+#             df_pvals,
+#             vmin=0,
+#             vmax=1,
+#             cmap=cmap,
+#             annot=annot,
+#             fmt=".2f",
+#             linewidths=1,
+#             cbar_kws=cbar_kws,
+#             ax=ax[1],
+#         )
+#         ax[1].set_title("Spearman correlations, p-value")
+#         xticks = df_pvals.columns
+#         ax[1].set_xticks(np.arange(len(xticks)) + 0.5, xticks)
+#
+#     return df_corrs, df_pvals
