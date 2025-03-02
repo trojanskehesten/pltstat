@@ -425,6 +425,17 @@ def heatmap_corr(
     >>> df = pd.DataFrame(np.random.rand(10, 5), columns=list("ABCDE"))
     >>> heatmap_corr(df, corr_type="pearson")
     """
+    try:
+        corr_method_title = {
+            "pearson": "Pearson's r Correlation",
+            "kendall": "Kendall's τ Correlation",
+            "spearman": "Spearman's ρ Correlation",
+            "cramer_v": "Cramér's V Statistic",
+            "matthews": "Matthews Correlation Coefficient",
+            "phik": "Phi Coefficient (phik)",
+        }[corr_type]
+    except:
+        raise ValueError(f"Invalid `corr_type`. Choose 'pearson', 'spearman', 'kendall', 'cramer_v', 'matthews', or 'phik'. But [{corr_type}] is given")
     if corr_type in ["matthews", "cramer_v"]:
 
         # df.corr works only with numerical data, correct it:
@@ -496,13 +507,15 @@ def heatmap_corr(
         **kwargs,
     )
 
+    ax.set_title(corr_method_title)
+
 
 def pvals_num(
         df,
         num_cols1=None,
         num_cols2=None,
         figsize=None,
-        method='auto',
+        method='pearson',
         fmt=".2f",
         annot=True,
         alpha=0.05,
@@ -511,24 +524,64 @@ def pvals_num(
         ax=None,
         **kwargs,
 ):
+    """
+    Compute and plot p-values for pairwise correlations between numeric columns.
+
+    Parameters
+    ----------
+    df : DataFrame
+       Input DataFrame containing numeric columns.
+    num_cols1, num_cols2 : list, optional
+       List of column names to be used as the first and the second set of variables.
+       If None, all columns in `df` are used.
+    figsize : tuple, optional
+       Figure size for the heatmap. Ignored if `ax` is not None.
+    method : {'pearson', 'spearman'}, default='pearson'
+       Correlation method to use.
+    fmt : str, default=".2f"
+       String formatting for displayed p-values.
+    annot : bool, default=True
+       If True, display p-values on the heatmap.
+    alpha : float, default=0.05
+       Significance level for highlighting values.
+    annot_rot : int, default=0
+       Rotation angle for annotations.
+    annot_size : int, optional
+       Font size for annotations.
+    ax : matplotlib.axes.Axes, optional
+       Axis object to plot the heatmap.
+    **kwargs
+       Additional keyword arguments passed to seaborn heatmap.
+
+    Returns
+    -------
+    DataFrame
+       A DataFrame containing p-values for pairwise correlations.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> np.random.seed(42)
+    >>> df = pd.DataFrame(np.random.rand(10, 3), columns=['A', 'B', 'C'])
+    >>> pvals_num(df, method='pearson')
+    """
     if method == 'pearson':
         stat_func = pearsonr
-        stat_method = "Pearson R"
+        stat_method = "Pearson's Correlation"
     elif method == 'spearman':
         stat_func = spearmanr
-        stat_method = "Spearman R"
+        stat_method = "Spearman's Rank Correlation"
+    else:
+        raise ValueError(f"Invalid `method`. Choose 'pearson' or 'spearman'. But [{method}] is given")
 
     cols = df.columns
-    num_cols1 = num_cols1 | cols
-    num_cols2 = num_cols2 | cols
+    num_cols1 = num_cols1 or cols
+    num_cols2 = num_cols2 or cols
 
-    df_pvals = pd.DataFrame(index=num_cols1, columns=num_cols2, dtype="float64")
-    for num_col1 in num_cols1:
-        for num_col2 in num_cols2:
-            df_subset = df[[num_col1, num_col2]].dropna()
-            p_value = stats.pearsonr(df_subset[num_col1], df_subset[num_col2])[1]
+    df_pvals = df.corr(method=lambda a, b: stat_func(a, b)[1])
+    np.fill_diagonal(df_pvals.values, 0)
 
-            df_pvals.loc[num_col1, num_col2] = p_value
+    df_pvals = df_pvals.loc[num_cols1, num_cols2]
 
     # Plot dataframe:
     _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
@@ -551,25 +604,75 @@ def pvals_cat(
         ax=None,
         **kwargs,
     ):
+    """
+    Compute and plot p-values for pairwise correlations between categorical columns.
+
+    Parameters
+    ----------
+    df : DataFrame
+       Input DataFrame containing categorical columns.
+    cat_cols1, cat_cols2 : list, optional
+       List of column names to be used as the first and the second set of variables.
+       If None, all columns in `df` are used.
+    figsize : tuple, optional
+       Figure size for the heatmap. Ignored if `ax` is not None.
+    fmt : str, default=".2f"
+       String formatting for displayed p-values.
+    annot : bool, default=True
+       If True, display p-values on the heatmap.
+    alpha : float, default=0.05
+       Significance level for highlighting values.
+    annot_rot : int, default=0
+       Rotation angle for annotations.
+    annot_size : int, optional
+       Font size for annotations.
+    ax : matplotlib.axes.Axes, optional
+       Axis object to plot the heatmap.
+    **kwargs
+       Additional keyword arguments passed to seaborn heatmap.
+
+    Returns
+    -------
+    DataFrame
+       A DataFrame containing p-values for pairwise correlations.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> np.random.seed(42)
+    >>> df = pd.DataFrame({
+    >>>     'A': np.random.choice(['Red', 'Blue', 'Green'], size=10),
+    >>>     'B': np.random.choice(['Yes', 'No'], size=10),
+    >>>     'C': np.random.choice(['Low', 'Medium', 'High'], size=10)
+    >>> })
+    >>> pvals_cat(df)
+    """
+    # method : {'pearson', 'spearman'}, default='pearson'
+    #        Correlation method to use.
+
     # TODO Add Fisher after update
     # if method == 'auto':
     #     stat_func = lambda crosstab_df: fisher(crosstab_df) if crosstab_df.min(axis=None) < 5 else chi2_contingency(crosstab_df)
     # elif method == 'fisher':
     #     stat_func = lambda crosstab_df: fisher(crosstab_df)
+    #     stat_method = "Fisher's Exact Test"
     # elif method == 'chi2':
     stat_func = lambda ct_df: chi2_contingency(ct_df)
-    stat_method = 'chi2'
+    stat_method = 'Chi-squared Test'
 
     cols = df.columns
-    cat_cols1 = cat_cols1 | cols
-    cat_cols2 = cat_cols2 | cols
+    cat_cols1 = cat_cols1 or cols
+    cat_cols2 = cat_cols2 or cols
 
     df_pvals = pd.DataFrame(index=cat_cols1, columns=cat_cols2, dtype="float64")
     for cat_col1 in cat_cols1:
         for cat_col2 in cat_cols2:
-            df_subset = df[[cat_col1, cat_col2]].dropna()
-            crosstab_df = pd.crosstab(df_subset[cat_col1], df_subset[cat_col2])
-            p_value = stat_func(crosstab_df)[1]
+            if cat_col1 == cat_col2:
+                p_value = 0.
+            else:
+                df_subset = df[[cat_col1, cat_col2]].dropna()
+                crosstab_df = pd.crosstab(df_subset[cat_col1], df_subset[cat_col2])
+                p_value = stat_func(crosstab_df)[1]
 
             df_pvals.loc[cat_col1, cat_col2] = p_value
 
@@ -584,7 +687,7 @@ def pvals_num_cat(
     df,
     cat_cols,
     num_cols,
-    alpha=0.5,
+    alpha=0.05,
     figsize=None,
     fmt=".2f",
     method='auto',
@@ -596,17 +699,55 @@ def pvals_num_cat(
     **kwargs,
 ):
     """
-    Create Heatmaps with Mann-Whitney p-values between numerical data divided by
-    categorical columns into two datasets
-    :param df: pd.DataFrame for analysis
-    :param cat_cols: Categorical columns with two unique values
-    :param num_cols: Numerical columns
-    :param figsize: tuple, figure size
-    :param is_T: pivoting table, bool
-    :param annot: add annotation to cells, bool
-    :param annot_rot: rotation angle of annotation, int
-    :param annot_size: fontsize of annotation, int
-    :return: pandas.DataFrames with Mann-Whitney p-values
+    Compute Mann-Whitney or Kruskal-Wallis p-values between numerical columns grouped by categorical columns.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Input DataFrame containing both numerical and categorical columns.
+    cat_cols : list
+        List of categorical column names. Each column must have at least two unique values.
+    num_cols : list
+        List of numerical column names.
+    alpha : float, default=0.05
+        Significance level for highlighting values in the heatmap.
+    figsize : tuple, optional
+        Figure size for the heatmap. Ignored if `ax` is not None.
+    fmt : str, default=".2f"
+        String formatting for displayed p-values.
+    method : {'auto', 'mw', 'kruskal'}, default='auto'
+        Statistical test to use:
+        - 'mw' for Mann-Whitney U test (for two groups only)
+        - 'kruskal' for Kruskal-Wallis test (for multiple groups)
+        - 'auto' selects Mann-Whitney if there are exactly two groups, otherwise Kruskal-Wallis.
+    is_T : bool, default=False
+        If True, transpose the result DataFrame.
+    annot : bool, default=True
+        If True, display p-values on the heatmap.
+    annot_rot : int, default=0
+        Rotation angle for annotations.
+    annot_size : int, optional
+        Font size for annotations.
+    ax : matplotlib.axes.Axes, optional
+        Axis object to plot the heatmap. If provided, `figsize` is ignored.
+    **kwargs
+        Additional keyword arguments passed to seaborn heatmap.
+
+    Returns
+    -------
+    DataFrame
+        A DataFrame containing p-values for each numerical-categorical combination.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> np.random.seed(42)
+    >>> df = pd.DataFrame({
+    ...     'Category': np.random.choice(['A', 'B'], size=10),
+    ...     'Value1': np.random.rand(10),
+    ...     'Value2': np.random.rand(10)
+    ... })
+    >>> pvals_num_cat(df, cat_cols=['Category'], num_cols=['Value1', 'Value2'], method='mw')
     """
     if method == 'auto':
         stat_func = lambda n: mannwhitneyu if n == 2 else kruskal
@@ -634,7 +775,11 @@ def pvals_num_cat(
         df_pvals = df_pvals.T
 
     # Plot dataframe:
-    stat_method = {"mw": "Mann-Whitney", "kruskal": "Kruskal", "auto": "Auto Mann-Whitney or Kruskal"}[method]
+    stat_method = {
+        "mw": "Mann-Whitney U Test",
+        "kruskal": "Kruskal-Wallis Test",
+        "auto": "Auto Mann-Whitney U or Kruskal-Wallis Test"
+    }[method]
     _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
                 annot_size=annot_size, **kwargs)
 
@@ -661,9 +806,9 @@ def _plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=N
     )
     xticks = df_pvals.columns
 
-    plt.xticks(np.arange(len(xticks)) + 0.5, xticks)
+    # ax.set_xticks(np.arange(len(xticks)) + 0.5, xticks)
 
-    plt.title(f"{stat_method} p-values")
+    ax.set_title(f"{stat_method} p-value")
 
 
 def phik_corrs(
