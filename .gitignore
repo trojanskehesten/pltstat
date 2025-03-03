@@ -14,3 +14,6 @@ sandbox/
 .ipynb_checkpoints
 
 __pycache__/
+
+# Temporary tests
+tests.py

@@ -20,6 +20,33 @@ You can download it from the [official Python website](https://www.python.org/do
 
 2. **R language** is installed on your system, as the `rpy2` library (used in this project) requires it. You can download R from the [official R website](https://cloud.r-project.org/).
 
+    Check the installed version of R:
+
+    ```bash
+    R --version
+    ```
+
+3. Verify that the `R_HOME` environment variable is correctly set and that R is accessible from the command line:
+   
+    ```bash
+    python -c "import os; print(os.getenv('R_HOME'))"
+    ```
+
+4. Setting Up `R_HOME` (if needed)
+
+- **Windows**:  
+  1. Locate the R installation directory (e.g., `C:\Program Files\R\R-4.x.x`).
+  2. Add the path to `R_HOME`:  
+     - Open "System Properties" > "Environment Variables."
+     - Under "System Variables," click "New" or "Edit" and set:
+       - **Variable name**: `R_HOME`
+       - **Variable value**: Path to your R directory (e.g., `C:\Program Files\R\R-4.x.x`).
+
+- **macOS/Linux**:  
+  Add the following line to your shell configuration file (`~/.bashrc`, `~/.zshrc`, or `~/.bash_profile`):  
+  ```bash
+  export R_HOME=/usr/lib/R
+  
 ### Installation
 
 To install the `pltstat` library, simply run the following command:
@@ -60,40 +87,40 @@ tf.boxplot(df, "gender", "age")
 
 ### Python Modules
 
-- **`__init__.py`**
+- **[`__init__.py`](__init__.py)**
   - Marks the directory as a Python package. This file allows you to import modules from the `pltstat` package.
 
-- **`singlefeats.py`**
+- **[`singlefeat.py`](singlefeat.py)**
   - Dedicated to the analysis and visualization of single-variable features, including plotting functions such as pie charts, count plots, and histograms.
 
-- **`twofeats.py`**
+- **[`twofeats.py`](twofeats.py)**
   - Provides tools for analyzing interactions between two features. Includes functions for creating crosstabs, computing correlations, and visualizing results using violin plots, boxplots, and distribution box plots. These functions also display p-values and other statistical metrics to summarize relationships between the two features.
 
-- **`nfeats.py`**
+- **[`multfeats.py`]()**
   - Provides tools for analyzing relationships between multiple features.  
   Includes visualization functions for analyzing missing data, comparing distributions, and visualizing dimensionality reductions. Additionally, it provides methods for creating heatmaps that display correlations and p-values, including Spearman's correlation, Mann-Whitney p-values, and Phik correlations.
 
-- **`circle.py`**
+- **[`circle.py`](circle.py)**
   - Contains functions and methods related to circular statistical visualizations, such as radar charts or circular histograms.
 
-- **`cm.py`**
+- **[`cm.py`](cm.py)**
   - Contains custom colormap utilities for visualizations, such as rendering correlation matrices or creating two-colored maps for p-values with a threshold (e.g., alpha).
 
-- **`corr_methods.py`**
+- **[`corr_methods.py`](corr_methods.py)**
   - Includes methods for calculating correlation matrices and related statistical relationships.
 
-- **`in_out.py`**
+- **[`in_out.py`](in_out.py)**
   - Provides utilities for reading, writing, and preprocessing input and output data files.
 
 ### Other Files
 
-- **`.gitignore`**
+- **[`.gitignore`](.gitignore)**
   - Specifies intentionally untracked files to ignore in the repository, such as virtual environments and temporary files.
 
 - **`README.md`**
   - This file provides an overview of the project, including file descriptions and usage instructions.
 
-- **`requirements.txt`**
+- **[`requirements.txt`](requirements.txt)**
   - Lists the Python dependencies required to run the library. Install them using:
     ```bash
     pip install -r requirements.txt

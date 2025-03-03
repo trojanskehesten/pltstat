@@ -116,17 +116,6 @@ def hist(
     ax.set_title(title)
     if return_ax:
         return ax
-    #
-    # Bars and colors:
-    # Use custom colors and opacity
-    # bottom = 0
-    # max_height = 10
-    # radii = max_height*np.random.rand(N)
-    # width = (2*np.pi) / N
-    # bars = ax.bar(theta, radii, width=width) #, bottom=bottom)
-    # for r, bar in zip(radii, bars):
-    #     bar.set_facecolor(plt.cm.jet(r / 10.))
-    #     bar.set_alpha(0.8)
 
 
 hist.__doc__ = """\
