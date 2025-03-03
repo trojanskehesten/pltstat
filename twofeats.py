@@ -12,7 +12,7 @@ from scipy.stats import chi2_contingency, kruskal, mannwhitneyu
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import matthews_corrcoef
 
-from corr_methods import cramer_v_by_obs
+from .corr_methods import cramer_v_by_obs
 
 # Fisher exact test from R:
 from rpy2.robjects import numpy2ri
