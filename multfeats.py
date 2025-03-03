@@ -16,10 +16,9 @@ from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import matthews_corrcoef
 
-import cm
-from cm import get_corr_thr_cmap, get_pval_legend_thr_cmap
+from . import cm
 
-from corr_methods import cramer_v
+from .corr_methods import cramer_v
 
 def nulls(
     df,
@@ -790,7 +789,7 @@ def _plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=N
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=figsize)
 
-    cmap, cbar_kws = get_pval_legend_thr_cmap(alpha=alpha)
+    cmap, cbar_kws = cm.get_pval_legend_thr_cmap(alpha=alpha)
     sns.heatmap(
         df_pvals,
         vmin=0,
@@ -898,7 +897,7 @@ def phik_corrs(
     phik_kwargs = phik_kwargs or {}
     heatmap_kwargs = heatmap_kwargs or {}
 
-    cmap = get_corr_thr_cmap(threshold=threshold, vmin=0)
+    cmap = cm.get_corr_thr_cmap(threshold=threshold, vmin=0)
     if (x is not None) and (y is not None):
         xy = np.concatenate((x, y))
         xy = np.unique(xy)
@@ -967,7 +966,7 @@ def phik_corrs(
 #     [CRAMER V]               CHI2 FISHER
 #
 #     # Create p-values:
-#     cmap, cbar_kws = get_pval_legend_thr_cmap()
+#     cmap, cbar_kws = cm.get_pval_legend_thr_cmap()
 #     sns.heatmap(
 #         df_pvals,
 #         vmin=0,
@@ -1086,7 +1085,7 @@ def phik_corrs(
 #     if is_T is True:
 #         df_pvals = df_pvals.T
 #
-#     cmap_corrs = get_corr_thr_cmap(threshold=cmap_thr)
+#     cmap_corrs = cm.get_corr_thr_cmap(threshold=cmap_thr)
 #     sns.heatmap(
 #         df_corrs,
 #         vmin=-1,
@@ -1103,7 +1102,7 @@ def phik_corrs(
 #     xticks = df_corrs.columns
 #     ax[0].set_xticks(np.arange(len(xticks)) + 0.5, xticks)
 #     if show_pvals:
-#         cmap, cbar_kws = get_pval_legend_thr_cmap()
+#         cmap, cbar_kws = cm.get_pval_legend_thr_cmap()
 #         sns.heatmap(
 #             df_pvals,
 #             vmin=0,
