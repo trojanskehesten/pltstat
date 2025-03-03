@@ -3,7 +3,7 @@
 
 # Copyright: (c) 2025 Dmitrii Beregovoi
 
-__version__ = "0.9.6.2"
+__version__ = "0.9.7"
 __author__ = "Dmitrii Beregovoi"
 __email__ = "dimaforth@gmail.com"
 __all__ = [
