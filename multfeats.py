@@ -813,6 +813,7 @@ def _plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=N
 
 def phik_corrs(
     df,
+    interval_cols=None,
     x=None,
     y=None,
     threshold=0.8,
@@ -834,6 +835,10 @@ def phik_corrs(
     ----------
     df : pandas.DataFrame
         DataFrame containing the data for correlation calculation.
+    interval_cols : list of str, optional
+        List of columns to treat as interval variables for Phik correlation calculation.
+        If None, columns will be automatically determined as interval (continuous) or categorical by the program.
+        This parameter is useful when you want to specify certain columns to be treated as interval (continuous) variables.
     x : list, optional
         List of columns to use for the x-axis in the correlation matrix. If None,
         correlations will be calculated for all columns in df.
@@ -897,10 +902,10 @@ def phik_corrs(
     if (x is not None) and (y is not None):
         xy = np.concatenate((x, y))
         xy = np.unique(xy)
-        df_phik = df[xy].phik_matrix(bins=bins, njobs=njobs, **phik_kwargs)
+        df_phik = df[xy].phik_matrix(interval_cols=interval_cols, bins=bins, njobs=njobs, **phik_kwargs)
         df_phik = df_phik.loc[y, x]
     else:
-        df_phik = df.phik_matrix(bins=bins, njobs=njobs, **phik_kwargs)
+        df_phik = df.phik_matrix(interval_cols=interval_cols, bins=bins, njobs=njobs, **phik_kwargs)
 
     # Create axes if not provided
     if ax is None:
