@@ -822,7 +822,10 @@ def phik_corrs(
     annot_rot=0,
     annot_size=None,
     ax=None,
-    **kwargs,
+    bins=10,
+    njobs=-1,
+    heatmap_kwargs=None,
+    phik_kwargs=None,
 ):
     """
     Plot Heatmap with Phik correlations between specific x and y lists of columns.
@@ -853,8 +856,15 @@ def phik_corrs(
         Font size for the annotations. Default is None.
     ax : matplotlib.axes.Axes or None, optional, default=None
         The axes on which to draw the plot. If None, a new figure and axes are created.
-    **kwargs : keyword arguments
-        Additional arguments passed to `sns.heatmap`.
+    bins : int, optional
+        Number of bins to use for discretizing continuous variables. Default is 10.
+    njobs : int, optional
+        Number of parallel jobs to use for the Phik calculation.
+        Default is -1, which uses all available processors.
+    heatmap_kwargs : dict, optional
+        Additional keyword arguments to pass to `sns.heatmap` for customization of the heatmap.
+    phik_kwargs : dict, optional
+        Additional keyword arguments to pass to the `phik_matrix` function for Phik calculation.
 
     Returns
     -------
@@ -879,14 +889,18 @@ def phik_corrs(
     >>> y = ['education_years']
     >>> phik_corrs(df, x=x, y=y, figsize=(8, 6))
     """
+
+    phik_kwargs = phik_kwargs or {}
+    heatmap_kwargs = heatmap_kwargs or {}
+
     cmap = get_corr_thr_cmap(threshold=threshold, vmin=0)
     if (x is not None) and (y is not None):
         xy = np.concatenate((x, y))
         xy = np.unique(xy)
-        df_phik = df[xy].phik_matrix()
+        df_phik = df[xy].phik_matrix(bins=bins, njobs=njobs, **phik_kwargs)
         df_phik = df_phik.loc[y, x]
     else:
-        df_phik = df.phik_matrix()
+        df_phik = df.phik_matrix(bins=bins, njobs=njobs, **phik_kwargs)
 
     # Create axes if not provided
     if ax is None:
@@ -901,7 +915,7 @@ def phik_corrs(
         fmt=fmt,
         annot_kws={"rotation": annot_rot, "fontsize": annot_size},
         ax=ax,
-        **kwargs,
+        **heatmap_kwargs,
     )
 
 
