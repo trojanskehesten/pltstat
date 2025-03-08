@@ -462,6 +462,7 @@ def dis_box_plot(
     stat="count",
     figsize=(20, 3.5),
     palette="pastel",
+    alpha=0.05,
     ax_return=False,
 ):
     """
@@ -490,6 +491,8 @@ def dis_box_plot(
         The size of the figure to be created, in inches (width, height).
     palette : str or list, optional, default 'pastel'
         The color palette to use for the plot. Can be a predefined palette name or a list of colors.
+    alpha : float, optional, default 0.05
+        The significance level for the statistical test. Determines the threshold for p-value coloring.
     ax_return : bool, optional, default False
         If True, the function will return the axes object(s) for further customization.
 
@@ -545,6 +548,7 @@ def dis_box_plot(
         cat_order=cat_order,
         ax=ax[0],
         palette=palette,
+        alpha=alpha,
     )
 
     title = fig.axes.get_title()
