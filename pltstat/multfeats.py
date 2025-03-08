@@ -18,7 +18,7 @@ from sklearn.metrics import matthews_corrcoef
 
 from . import cm
 
-from .corr_methods import cramer_v
+from .stat_methods import cramer_v
 
 def nulls(
     df,
