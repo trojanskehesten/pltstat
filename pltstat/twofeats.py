@@ -1,3 +1,12 @@
+"""
+Provides tools for analyzing interactions between two features.
+Includes functions for creating crosstabs, computing correlations,
+and visualizing results using violin plots, boxplots,
+and distribution box plots. These functions also display p-values
+and other statistical metrics to summarize relationships between
+the two features.
+"""
+
 from types import ModuleType
 
 import matplotlib.pyplot as plt

@@ -1,4 +1,6 @@
-# Correlation calculation functions
+"""
+Includes methods for calculating correlation matrices and related statistical relationships.
+"""
 
 import numpy as np
 import pandas as pd

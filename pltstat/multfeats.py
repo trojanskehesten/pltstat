@@ -1,3 +1,11 @@
+"""
+Provides tools for analyzing relationships between multiple features.
+Includes visualization functions for analyzing missing data, comparing distributions,
+and visualizing dimensionality reductions.
+Additionally, it provides methods for creating heatmaps that display correlations and p-values,
+including Spearman's correlation, Mann-Whitney p-values, and Phik correlations.
+"""
+
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 

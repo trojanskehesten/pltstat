@@ -1,3 +1,8 @@
+"""
+Dedicated to the analysis and visualization of single-variable features,
+including plotting functions such as pie charts, count plots, and histograms.
+"""
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np

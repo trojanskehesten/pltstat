@@ -1,4 +1,8 @@
-# TODO: Description
+"""
+Contains functions and methods related to circular statistical visualizations,
+such as radar charts or circular histograms.
+"""
+
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 import numpy as np
