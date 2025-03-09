@@ -1,3 +1,12 @@
+"""
+Provides tools for analyzing interactions between two features.
+Includes functions for creating crosstabs, computing correlations,
+and visualizing results using violin plots, boxplots,
+and distribution box plots. These functions also display p-values
+and other statistical metrics to summarize relationships between
+the two features.
+"""
+
 from types import ModuleType
 
 import matplotlib.pyplot as plt
@@ -10,16 +19,10 @@ from scipy import stats
 from scipy.stats import chi2_contingency, kruskal, mannwhitneyu
 
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import matthews_corrcoef
 
-from .corr_methods import cramer_v_by_obs
-
-# Fisher exact test from R:
-from rpy2.robjects import numpy2ri
-from rpy2.robjects.packages import importr
-
-numpy2ri.activate()
-_stats_r = importr("stats")
+from .stat_methods import cramer_v_by_obs, matthews
+from .stat_methods import fisher_test
+from .stat_methods import kruskal_by_cat, mannwhitneyu_by_cat
 
 
 def crosstab(
@@ -111,22 +114,14 @@ def crosstab(
 
         if exact is True:
             test_type = "Exact Fisher"
-            # Python Scipy realization (only 2x2 table):
-            # g, p_value = _fisher_exact(crosstab_df)
-            # R language Stats realization (MxN table):
-            p_value = _stats_r.fisher_test(crosstab_df.values, conf_int=True, conf_level=alpha)[0][0]
+            p_value = fisher_test(crosstab_df, alpha=alpha)[1]
         else:
             test_type = "$chi^2$"
             p_value = chi2_contingency(crosstab_df)[1]
 
         if crosstab_df.shape == (2, 2):
             corr_type = "Matthews"
-            x_col_un = df_subset[x_col].unique()
-            y_col_un = df_subset[y_col].unique()
-            correlation = matthews_corrcoef(
-                df_subset[x_col].map({x_col_un[0]: 0, x_col_un[1]: 1}),
-                df_subset[y_col].map({y_col_un[0]: 0, y_col_un[1]: 1}),
-            )
+            correlation = matthews(df_subset[x_col], df_subset[y_col])
         else:
             corr_type = "Cramer V"
             correlation = cramer_v_by_obs(crosstab_df)
@@ -192,10 +187,6 @@ def corr(
     ax=None,
     show_means=True,
     show_regression=True,
-    # point_color="green",
-    # line_color="blue",
-    # mean_colors=("red", "blue"),
-    # point_size=5,
     **kwargs,
 ):
     """
@@ -245,8 +236,6 @@ def corr(
 
     # Show mean lines
     if show_means:
-        # ax.axvline(x.mean(), color=mean_colors[0], linestyle="--", label=f"Mean {col_x}")
-        # ax.axhline(y.mean(), color=mean_colors[1], linestyle="--", label=f"Mean {col_y}")
         ax.plot(
             [x.mean()] * 2,
             [y.min(), y.max()],
@@ -382,12 +371,9 @@ def boxplot(
     n_cat_feat_tr2 = 16
 
     if n_cat_feat == n_cat_feat_tr1:
-        x = df[df[cat_feat] == df[cat_feat].unique()[0]][num_feat]
-        y = df[df[cat_feat] == df[cat_feat].unique()[1]][num_feat]
-        p = mannwhitneyu(x, y)[1]
+        p = mannwhitneyu_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)
     elif (n_cat_feat > n_cat_feat_tr1) and (n_cat_feat <= n_cat_feat_tr2):
-        x = df.groupby(cat_feat)[num_feat].agg(list).to_numpy()
-        p = kruskal(*x)[1]
+        p = kruskal_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)
     elif n_cat_feat > n_cat_feat_tr2:
         raise ValueError(
             f"Too many unique values of categorical feature '{cat_feat}': {n_cat_feat}"
@@ -462,6 +448,7 @@ def dis_box_plot(
     stat="count",
     figsize=(20, 3.5),
     palette="pastel",
+    alpha=0.05,
     ax_return=False,
 ):
     """
@@ -490,6 +477,8 @@ def dis_box_plot(
         The size of the figure to be created, in inches (width, height).
     palette : str or list, optional, default 'pastel'
         The color palette to use for the plot. Can be a predefined palette name or a list of colors.
+    alpha : float, optional, default 0.05
+        The significance level for the statistical test. Determines the threshold for p-value coloring.
     ax_return : bool, optional, default False
         If True, the function will return the axes object(s) for further customization.
 
@@ -545,6 +534,7 @@ def dis_box_plot(
         cat_order=cat_order,
         ax=ax[0],
         palette=palette,
+        alpha=alpha,
     )
 
     title = fig.axes.get_title()

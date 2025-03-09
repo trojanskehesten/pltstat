@@ -8,7 +8,7 @@ __author__ = "Dmitrii Beregovoi"
 __email__ = "dimaforth@gmail.com"
 __all__ = [
     "__version__",
-    "corr_methods",
+    "stat_methods.py",
     "cm",
     "circle",
     "in_out",

@@ -17,3 +17,7 @@ __pycache__/
 
 # Temporary tests
 tests.py
+
+# Setup results
+dist/
+pltstat.egg-info/
