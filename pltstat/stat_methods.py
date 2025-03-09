@@ -6,6 +6,117 @@ import numpy as np
 import pandas as pd
 
 from scipy import stats
+from scipy.stats import kruskal, mannwhitneyu
+
+from sklearn.metrics import matthews_corrcoef
+
+import warnings
+
+# Fisher exact test from R:
+from rpy2.robjects import numpy2ri
+from rpy2.robjects.packages import importr
+
+numpy2ri.activate()
+_stats_r = importr("stats")
+
+
+def fisher_test(obs, alpha=0.05):
+    """
+        Perform Fisher's Exact Test on a 2x2 contingency table.
+
+        Parameters
+        ----------
+        obs : pd.DataFrame or np.ndarray
+            2x2 contingency table with observed frequencies.
+        alpha : float, optional
+            Significance level for the confidence interval (default is 0.05).
+
+        Returns
+        -------
+        float
+            p-value from Fisher's Exact Test.
+
+        Notes
+        --------
+        This implementation uses the `fisher_test` function from R's 'stats' package,
+        which works for any MxN table but here is specifically applied to 2x2 tables.
+
+        Examples
+        --------
+        # Example usage:
+        >>> import pandas as pd
+        >>> data = {'Category A': [30, 10],
+        >>>         'Category B': [20, 40]}
+        >>> obs = pd.DataFrame(data)
+        >>> fisher_test(obs)
+        0.345672
+
+        Notes
+        -----
+        The Fisher's Exact Test is used for categorical data to determine
+        if there are nonrandom associations between two categorical variables.
+        """
+    # Python Scipy realization (only 2x2 table):
+    # g, p_value = _fisher_exact(crosstab_df)
+    # R language Stats realization (MxN table):
+    obs = obs.values
+    p_value = _stats_r.fisher_test(obs, conf_int=True, conf_level=alpha)[0][0]
+
+    return p_value
+
+
+def matthews(x, y):
+    """
+    Calculate the Matthews correlation coefficient (MCC) for binary categorical variables.
+
+    The Matthews correlation coefficient is a measure of the strength of association
+    between two binary categorical variables.
+
+    Parameters
+    ----------
+    x : array-like
+       First binary categorical feature.
+    y : array-like
+       Second binary categorical feature.
+
+    Returns
+    -------
+    corr_matthews : float
+       The Matthews correlation coefficient, ranging from -1 (perfect negative correlation)
+       to +1 (perfect positive correlation). A value of 0 indicates no correlation.
+
+    Raises
+    ------
+    ValueError
+       If either `x` or `y` has more than two unique values or contains fewer than two unique values.
+
+    Notes
+    -----
+    The function removes missing values before computing the correlation.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from pltstat.stat_methods import matthews
+    >>> x = np.array(["yes", "no", "yes", "yes", "no", "no"])
+    >>> y = np.array(["no", "no", "yes", "yes", "no", "no"])
+    >>> matthews(x, y)
+    0.5773502691896258
+    """
+    df = pd.DataFrame({"x": x, "y": y})
+    df = df.dropna()
+
+    x_unique = np.sort(df["x"].unique())
+    y_unique = np.sort(df["y"].unique())
+
+    if (len(x_unique) != 2) or (len(y_unique) != 2):
+        raise ValueError("Matthews correlation coefficient can only be calculated for binary categorical variables.")
+
+    x_mapped = df["x"].map({x_unique[0]: 0, x_unique[1]: 1})
+    y_mapped = df["y"].map({y_unique[0]: 0, y_unique[1]: 1})
+    corr_matthews = matthews_corrcoef(x_mapped, y_mapped)
+
+    return corr_matthews
 
 
 def cramer_v_by_obs(obs):
@@ -101,6 +212,111 @@ def cramer_v(data1, data2):
     corr_cramer_v = cramer_v_by_obs(obs)
     return corr_cramer_v
 
+
+def mannwhitneyu_by_cat(df, cat_feat, num_feat):
+    """
+    Perform the Mann-Whitney U test for a numeric variable across two categorical groups.
+
+    This function tests whether the distributions of a numeric feature differ
+    between two groups defined by a categorical feature.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The input dataframe containing the categorical and numeric features.
+    cat_feat : str
+        The name of the categorical feature with exactly two unique categories.
+    num_feat : str
+        The name of the numeric feature to compare across the two categories.
+
+    Returns
+    -------
+    float
+        The p-value of the Mann-Whitney U test, indicating the likelihood
+        that the two distributions are from the same population.
+        Returns NaN if `cat_feat` does not contain exactly two unique categories.
+
+    Raises
+    ------
+    UserWarning
+        If `cat_feat` does not have exactly two unique categories.
+
+    Notes
+    -----
+    - The test is non-parametric and does not assume normality of the numeric variable.
+    - Missing values are removed before performing the test.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from stat_methods import mannwhitneyu_by_cat
+    >>> np.random.seed(42)
+    >>> df = pd.DataFrame({
+    ...     "group": np.random.choice(["A", "B"], size=10),
+    ...     "value": np.random.randn(10)
+    ... })
+    >>> mannwhitneyu_by_cat(df, "group", "value")
+    0.25
+    """
+    df_subset = df[[cat_feat, num_feat]].dropna()
+    if df_subset[cat_feat].nunique() != 2:
+        warnings.warn(f"Feature `{cat_feat}` does not have exactly two unique categories. Returning NaN.", UserWarning)
+        return np.nan
+
+    x = df.groupby(cat_feat)[num_feat].agg(list).to_numpy()
+    p_value = mannwhitneyu(*x)[1]
+
+    # x = df[df[cat_feat] == df[cat_feat].unique()[0]][num_feat]
+    # y = df[df[cat_feat] == df[cat_feat].unique()[1]][num_feat]
+    # p_value = mannwhitneyu(x, y)[1]
+
+    return p_value
+
+
+def kruskal_by_cat(df, cat_feat, num_feat):
+    """
+    Perform the Kruskal-Wallis H test to compare distributions of a numerical feature across multiple categories.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing the categorical and numerical features.
+    cat_feat : str
+        Name of the categorical feature with at least two unique categories.
+    num_feat : str
+        Name of the numerical feature to compare.
+
+    Returns
+    -------
+    float
+        p-value from the Kruskal-Wallis H test. Returns NaN if the categorical feature has fewer than two unique categories.
+
+    Raises
+    ------
+    UserWarning
+        If the categorical feature has fewer than two unique categories.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from stat_methods import kruskal_by_cat
+    >>> data = pd.DataFrame({
+    ...     "group": ["A", "A", "B", "B", "B", "C", "C"],
+    ...     "value": [3.2, 3.8, 2.1, 2.5, 2.8, 4.0, 4.2]
+    ... })
+    >>> kruskal_by_cat(data, "group", "value")
+    0.045
+    """
+    df_subset = df[[cat_feat, num_feat]].dropna()
+    if df_subset[cat_feat].nunique() < 2:
+        warnings.warn(f"Feature `{cat_feat}` has less than two unique categories. Returning NaN.", UserWarning)
+        return np.nan
+
+    x = df.groupby(cat_feat)[num_feat].agg(list).to_numpy()
+    p_value = kruskal(*x)[1]
+
+    return p_value
 
 # TODO: Fisher?
 # p_value = _stats_r.fisher_test(crosstab_df.values)[0][0]
