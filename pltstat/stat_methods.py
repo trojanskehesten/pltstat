@@ -33,7 +33,9 @@ def fisher_test(obs, alpha=0.05):
 
         Returns
         -------
-        float
+        statistic : float
+            Currently return None
+        p_value : float
             p-value from Fisher's Exact Test.
 
         Notes
@@ -231,7 +233,9 @@ def mannwhitneyu_by_cat(df, cat_feat, num_feat):
 
     Returns
     -------
-    float
+    statistic : float
+        The Mann-Whitney U statistic.
+    p_value : float
         The p-value of the Mann-Whitney U test, indicating the likelihood
         that the two distributions are from the same population.
         Returns NaN if `cat_feat` does not contain exactly two unique categories.
@@ -264,13 +268,13 @@ def mannwhitneyu_by_cat(df, cat_feat, num_feat):
         return np.nan
 
     x = df.groupby(cat_feat)[num_feat].agg(list).to_numpy()
-    p_value = mannwhitneyu(*x)[1]
+    statistic, p_value = mannwhitneyu(*x)
 
     # x = df[df[cat_feat] == df[cat_feat].unique()[0]][num_feat]
     # y = df[df[cat_feat] == df[cat_feat].unique()[1]][num_feat]
     # p_value = mannwhitneyu(x, y)[1]
 
-    return p_value
+    return statistic, p_value
 
 
 def kruskal_by_cat(df, cat_feat, num_feat):
@@ -288,7 +292,9 @@ def kruskal_by_cat(df, cat_feat, num_feat):
 
     Returns
     -------
-    float
+    statistic : float
+        The Kruskal-Wallis H statistic, corrected for ties.
+    p_value : float
         p-value from the Kruskal-Wallis H test. Returns NaN if the categorical feature has fewer than two unique categories.
 
     Raises
@@ -314,9 +320,9 @@ def kruskal_by_cat(df, cat_feat, num_feat):
         return np.nan
 
     x = df.groupby(cat_feat)[num_feat].agg(list).to_numpy()
-    p_value = kruskal(*x)[1]
+    statistic, p_value = kruskal(*x)
 
-    return p_value
+    return statistic, p_value
 
 # TODO: Fisher?
 # p_value = _stats_r.fisher_test(crosstab_df.values)[0][0]
