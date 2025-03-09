@@ -49,7 +49,7 @@ def fisher_test(obs, alpha=0.05):
         >>>         'Category B': [20, 40]}
         >>> obs = pd.DataFrame(data)
         >>> fisher_test(obs)
-        0.345672
+        # np.float64(8.308658706239191e-05)
 
         Notes
         -----
@@ -62,7 +62,7 @@ def fisher_test(obs, alpha=0.05):
     obs = obs.values
     p_value = _stats_r.fisher_test(obs, conf_int=True, conf_level=alpha)[0][0]
 
-    return p_value
+    return None, p_value
 
 
 def matthews(x, y):
@@ -101,7 +101,7 @@ def matthews(x, y):
     >>> x = np.array(["yes", "no", "yes", "yes", "no", "no"])
     >>> y = np.array(["no", "no", "yes", "yes", "no", "no"])
     >>> matthews(x, y)
-    0.5773502691896258
+    # np.float64(0.7071067811865476)
     """
     df = pd.DataFrame({"x": x, "y": y})
     df = df.dropna()
@@ -256,7 +256,7 @@ def mannwhitneyu_by_cat(df, cat_feat, num_feat):
     ...     "value": np.random.randn(10)
     ... })
     >>> mannwhitneyu_by_cat(df, "group", "value")
-    0.25
+    # np.float64(0.8333333333333333)
     """
     df_subset = df[[cat_feat, num_feat]].dropna()
     if df_subset[cat_feat].nunique() != 2:
@@ -306,7 +306,7 @@ def kruskal_by_cat(df, cat_feat, num_feat):
     ...     "value": [3.2, 3.8, 2.1, 2.5, 2.8, 4.0, 4.2]
     ... })
     >>> kruskal_by_cat(data, "group", "value")
-    0.045
+    # np.float64(0.06866117151308508)
     """
     df_subset = df[[cat_feat, num_feat]].dropna()
     if df_subset[cat_feat].nunique() < 2:

@@ -114,7 +114,7 @@ def crosstab(
 
         if exact is True:
             test_type = "Exact Fisher"
-            p_value = fisher_test(crosstab_df, alpha=alpha)
+            p_value = fisher_test(crosstab_df, alpha=alpha)[1]
         else:
             test_type = "$chi^2$"
             p_value = chi2_contingency(crosstab_df)[1]

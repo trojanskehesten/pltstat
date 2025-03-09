@@ -682,6 +682,7 @@ def pvals_cat(
             else:
                 df_subset = df[[cat_col1, cat_col2]].dropna()
                 crosstab_df = pd.crosstab(df_subset[cat_col1], df_subset[cat_col2])
+
                 p_value = stat_func(crosstab_df)[1]
 
             df_pvals.loc[cat_col1, cat_col2] = p_value
@@ -760,7 +761,7 @@ def pvals_num_cat(
     >>> pvals_num_cat(df, cat_cols=['Category'], num_cols=['Value1', 'Value2'], method='mw')
     """
     if method == 'auto':
-        stat_func = lambda n: mannwhitneyu_by_cat if n == 2 else kruskal_by_cat()
+        stat_func = lambda n: mannwhitneyu_by_cat if n == 2 else kruskal_by_cat
     elif method == 'mw':
         stat_func = lambda n: mannwhitneyu_by_cat
     elif method == 'kruskal':
@@ -776,7 +777,7 @@ def pvals_num_cat(
                 # Less than 2 different values of categorical feature in the subset
                 p = np.nan
             else:
-                p = stat_func(df_subset, cat_col, num_col)
+                p = stat_func(n_cats)(df_subset, cat_col, num_col)
 
             df_pvals.loc[cat_col, num_col] = p
 
