@@ -16,12 +16,11 @@ import numpy as np
 import pandas as pd
 
 from scipy import stats
-from scipy.stats import chi2_contingency, kruskal, mannwhitneyu
+from scipy.stats import chi2_contingency, fisher_exact
 
 from sklearn.linear_model import LinearRegression
 
 from .stat_methods import cramer_v_by_obs, matthews
-from .stat_methods import fisher_test
 from .stat_methods import kruskal_by_cat, mannwhitneyu_by_cat
 
 
@@ -114,7 +113,7 @@ def crosstab(
 
         if exact is True:
             test_type = "Exact Fisher"
-            p_value = fisher_test(crosstab_df, alpha=alpha)[1]
+            p_value = fisher_exact(crosstab_df)[1]
         else:
             test_type = "$chi^2$"
             p_value = chi2_contingency(crosstab_df)[1]
@@ -371,9 +370,9 @@ def boxplot(
     n_cat_feat_tr2 = 16
 
     if n_cat_feat == n_cat_feat_tr1:
-        p = mannwhitneyu_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)
+        p = mannwhitneyu_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)[1]
     elif (n_cat_feat > n_cat_feat_tr1) and (n_cat_feat <= n_cat_feat_tr2):
-        p = kruskal_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)
+        p = kruskal_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)[1]
     elif n_cat_feat > n_cat_feat_tr2:
         raise ValueError(
             f"Too many unique values of categorical feature '{cat_feat}': {n_cat_feat}"

@@ -18,7 +18,7 @@ import pandas as pd
 from phik import phik_matrix
 
 from scipy import stats
-from scipy.stats import mannwhitneyu, kruskal, spearmanr, pearsonr, chi2_contingency
+from scipy.stats import spearmanr, pearsonr, chi2_contingency, fisher_exact
 
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
@@ -27,7 +27,6 @@ from sklearn.metrics import matthews_corrcoef
 from . import cm
 
 from .stat_methods import cramer_v
-from .stat_methods import fisher_test
 from .stat_methods import kruskal_by_cat, mannwhitneyu_by_cat
 
 def nulls(
@@ -659,10 +658,10 @@ def pvals_cat(
     >>> pvals_cat(df)
     """
     if method == 'auto':
-        stat_func = lambda crosstab_df: fisher_test(crosstab_df) if crosstab_df.min(axis=None) < 5 else chi2_contingency(crosstab_df)
+        stat_func = lambda crosstab_df: fisher_exact(crosstab_df) if crosstab_df.min(axis=None) < 5 else chi2_contingency(crosstab_df)
         stat_method = "Fisher's Exact or Chi-squared Test"
     elif method == 'fisher':
-        stat_func = lambda crosstab_df: fisher_test(crosstab_df)
+        stat_func = lambda crosstab_df: fisher_exact(crosstab_df)
         stat_method = "Fisher's Exact Test"
     elif method == 'chi2':
         stat_func = lambda ct_df: chi2_contingency(ct_df)
@@ -777,7 +776,7 @@ def pvals_num_cat(
                 # Less than 2 different values of categorical feature in the subset
                 p = np.nan
             else:
-                p = stat_func(n_cats)(df_subset, cat_col, num_col)
+                p = stat_func(n_cats)(df_subset, cat_col, num_col)[1]
 
             df_pvals.loc[cat_col, num_col] = p
 
