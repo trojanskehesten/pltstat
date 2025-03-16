@@ -1,5 +1,7 @@
 # pltstat: A Python Library for Statistical Data Visualization
 
+[![image](https://img.shields.io/pypi/v/pltstat.svg)](https://pypi.org/project/pltstat/)
+
 `pltstat` is a Python library designed to facilitate the visualization of statistical data analysis. This library includes a variety of tools and methods to streamline data exploration, statistical computation, and graphical representation.
 
 ---
@@ -8,9 +10,8 @@
 
 ### Requirements
 
-Before installing, make sure that:
-
-1. You are using **Python 3.12**. You can check your Python version by running:
+Before installing, make sure that you are using **Python 3.12**.  
+You can check your Python version by running:
 
    ```bash
    python --version
@@ -18,34 +19,6 @@ Before installing, make sure that:
 
 You can download it from the [official Python website](https://www.python.org/downloads/release/python-3120/).
 
-2. **R language** is installed on your system, as the `rpy2` library (used in this project) requires it. You can download R from the [official R website](https://cloud.r-project.org/).
-
-    Check the installed version of R:
-
-    ```bash
-    R --version
-    ```
-
-3. Verify that the `R_HOME` environment variable is correctly set and that R is accessible from the command line:
-   
-    ```bash
-    python -c "import os; print(os.getenv('R_HOME'))"
-    ```
-
-4. Setting Up `R_HOME` (if needed)
-
-- **Windows**:  
-  1. Locate the R installation directory (e.g., `C:\Program Files\R\R-4.x.x`).
-  2. Add the path to `R_HOME`:  
-     - Open "System Properties" > "Environment Variables."
-     - Under "System Variables," click "New" or "Edit" and set:
-       - **Variable name**: `R_HOME`
-       - **Variable value**: Path to your R directory (e.g., `C:\Program Files\R\R-4.x.x`).
-
-- **macOS/Linux**:  
-  Add the following line to your shell configuration file (`~/.bashrc`, `~/.zshrc`, or `~/.bash_profile`):  
-  ```bash
-  export R_HOME=/usr/lib/R
   
 ### Installation
 

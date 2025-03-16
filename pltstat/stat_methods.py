@@ -12,58 +12,6 @@ from sklearn.metrics import matthews_corrcoef
 
 import warnings
 
-# Fisher exact test from R:
-from rpy2.robjects import numpy2ri
-from rpy2.robjects.packages import importr
-
-numpy2ri.activate()
-_stats_r = importr("stats")
-
-
-def fisher_test(obs, alpha=0.05):
-    """
-        Perform Fisher's Exact Test on a 2x2 contingency table.
-
-        Parameters
-        ----------
-        obs : pd.DataFrame or np.ndarray
-            2x2 contingency table with observed frequencies.
-        alpha : float, optional
-            Significance level for the confidence interval (default is 0.05).
-
-        Returns
-        -------
-        float
-            p-value from Fisher's Exact Test.
-
-        Notes
-        --------
-        This implementation uses the `fisher_test` function from R's 'stats' package,
-        which works for any MxN table but here is specifically applied to 2x2 tables.
-
-        Examples
-        --------
-        # Example usage:
-        >>> import pandas as pd
-        >>> data = {'Category A': [30, 10],
-        >>>         'Category B': [20, 40]}
-        >>> obs = pd.DataFrame(data)
-        >>> fisher_test(obs)
-        # np.float64(8.308658706239191e-05)
-
-        Notes
-        -----
-        The Fisher's Exact Test is used for categorical data to determine
-        if there are nonrandom associations between two categorical variables.
-        """
-    # Python Scipy realization (only 2x2 table):
-    # g, p_value = _fisher_exact(crosstab_df)
-    # R language Stats realization (MxN table):
-    obs = obs.values
-    p_value = _stats_r.fisher_test(obs, conf_int=True, conf_level=alpha)[0][0]
-
-    return None, p_value
-
 
 def matthews(x, y):
     """
@@ -231,7 +179,9 @@ def mannwhitneyu_by_cat(df, cat_feat, num_feat):
 
     Returns
     -------
-    float
+    statistic : float
+        The Mann-Whitney U statistic.
+    p_value : float
         The p-value of the Mann-Whitney U test, indicating the likelihood
         that the two distributions are from the same population.
         Returns NaN if `cat_feat` does not contain exactly two unique categories.
@@ -261,16 +211,16 @@ def mannwhitneyu_by_cat(df, cat_feat, num_feat):
     df_subset = df[[cat_feat, num_feat]].dropna()
     if df_subset[cat_feat].nunique() != 2:
         warnings.warn(f"Feature `{cat_feat}` does not have exactly two unique categories. Returning NaN.", UserWarning)
-        return np.nan
+        return np.nan, np.nan
 
     x = df.groupby(cat_feat)[num_feat].agg(list).to_numpy()
-    p_value = mannwhitneyu(*x)[1]
+    statistic, p_value = mannwhitneyu(*x)
 
     # x = df[df[cat_feat] == df[cat_feat].unique()[0]][num_feat]
     # y = df[df[cat_feat] == df[cat_feat].unique()[1]][num_feat]
     # p_value = mannwhitneyu(x, y)[1]
 
-    return p_value
+    return statistic, p_value
 
 
 def kruskal_by_cat(df, cat_feat, num_feat):
@@ -288,7 +238,9 @@ def kruskal_by_cat(df, cat_feat, num_feat):
 
     Returns
     -------
-    float
+    statistic : float
+        The Kruskal-Wallis H statistic, corrected for ties.
+    p_value : float
         p-value from the Kruskal-Wallis H test. Returns NaN if the categorical feature has fewer than two unique categories.
 
     Raises
@@ -311,12 +263,12 @@ def kruskal_by_cat(df, cat_feat, num_feat):
     df_subset = df[[cat_feat, num_feat]].dropna()
     if df_subset[cat_feat].nunique() < 2:
         warnings.warn(f"Feature `{cat_feat}` has less than two unique categories. Returning NaN.", UserWarning)
-        return np.nan
+        return np.nan, np.nan
 
     x = df.groupby(cat_feat)[num_feat].agg(list).to_numpy()
-    p_value = kruskal(*x)[1]
+    statistic, p_value = kruskal(*x)
 
-    return p_value
+    return statistic, p_value
 
 # TODO: Fisher?
 # p_value = _stats_r.fisher_test(crosstab_df.values)[0][0]
