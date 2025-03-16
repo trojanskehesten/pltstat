@@ -1,3 +1,8 @@
+"""
+Contains custom colormap utilities for visualizations, such as rendering correlation matrices
+or creating two-colored maps for p-values with a threshold (e.g., alpha).
+"""
+
 from matplotlib.colors import LinearSegmentedColormap
 
 

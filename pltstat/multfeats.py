@@ -1,3 +1,11 @@
+"""
+Provides tools for analyzing relationships between multiple features.
+Includes visualization functions for analyzing missing data, comparing distributions,
+and visualizing dimensionality reductions.
+Additionally, it provides methods for creating heatmaps that display correlations and p-values,
+including Spearman's correlation, Mann-Whitney p-values, and Phik correlations.
+"""
+
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
@@ -10,7 +18,7 @@ import pandas as pd
 from phik import phik_matrix
 
 from scipy import stats
-from scipy.stats import mannwhitneyu, kruskal, spearmanr, pearsonr, chi2_contingency
+from scipy.stats import spearmanr, pearsonr, chi2_contingency, fisher_exact
 
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
@@ -18,7 +26,8 @@ from sklearn.metrics import matthews_corrcoef
 
 from . import cm
 
-from .corr_methods import cramer_v
+from .stat_methods import cramer_v
+from .stat_methods import kruskal_by_cat, mannwhitneyu_by_cat
 
 def nulls(
     df,
@@ -594,7 +603,7 @@ def pvals_cat(
         cat_cols1=None,
         cat_cols2=None,
         figsize=None,
-        # method='auto',
+        method='auto',
         fmt=".2f",
         annot=True,
         alpha=0.05,
@@ -615,6 +624,8 @@ def pvals_cat(
        If None, all columns in `df` are used.
     figsize : tuple, optional
        Figure size for the heatmap. Ignored if `ax` is not None.
+    method : {'auto', 'fisher', 'chi2'}, default='auto'
+       Correlation method to use. If `auto`, the method will be chosen by the data.
     fmt : str, default=".2f"
        String formatting for displayed p-values.
     annot : bool, default=True
@@ -646,18 +657,17 @@ def pvals_cat(
     >>> })
     >>> pvals_cat(df)
     """
-    # method : {'pearson', 'spearman'}, default='pearson'
-    #        Correlation method to use.
-
-    # TODO Add Fisher after update
-    # if method == 'auto':
-    #     stat_func = lambda crosstab_df: fisher(crosstab_df) if crosstab_df.min(axis=None) < 5 else chi2_contingency(crosstab_df)
-    # elif method == 'fisher':
-    #     stat_func = lambda crosstab_df: fisher(crosstab_df)
-    #     stat_method = "Fisher's Exact Test"
-    # elif method == 'chi2':
-    stat_func = lambda ct_df: chi2_contingency(ct_df)
-    stat_method = 'Chi-squared Test'
+    if method == 'auto':
+        stat_func = lambda crosstab_df: fisher_exact(crosstab_df) if crosstab_df.min(axis=None) < 5 else chi2_contingency(crosstab_df)
+        stat_method = "Fisher's Exact or Chi-squared Test"
+    elif method == 'fisher':
+        stat_func = lambda crosstab_df: fisher_exact(crosstab_df)
+        stat_method = "Fisher's Exact Test"
+    elif method == 'chi2':
+        stat_func = lambda ct_df: chi2_contingency(ct_df)
+        stat_method = 'Chi-squared Test'
+    else:
+        raise ValueError("Invalid `method`. Choose 'auto', 'fisher', or 'chi2'. But [{corr_type}] is given")
 
     cols = df.columns
     cat_cols1 = cat_cols1 or cols
@@ -671,6 +681,7 @@ def pvals_cat(
             else:
                 df_subset = df[[cat_col1, cat_col2]].dropna()
                 crosstab_df = pd.crosstab(df_subset[cat_col1], df_subset[cat_col2])
+
                 p_value = stat_func(crosstab_df)[1]
 
             df_pvals.loc[cat_col1, cat_col2] = p_value
@@ -749,11 +760,11 @@ def pvals_num_cat(
     >>> pvals_num_cat(df, cat_cols=['Category'], num_cols=['Value1', 'Value2'], method='mw')
     """
     if method == 'auto':
-        stat_func = lambda n: mannwhitneyu if n == 2 else kruskal
+        stat_func = lambda n: mannwhitneyu_by_cat if n == 2 else kruskal_by_cat
     elif method == 'mw':
-        stat_func = lambda n: mannwhitneyu
+        stat_func = lambda n: mannwhitneyu_by_cat
     elif method == 'kruskal':
-        stat_func = lambda n: kruskal
+        stat_func = lambda n: kruskal_by_cat
 
     df_pvals = pd.DataFrame(index=cat_cols, columns=num_cols, dtype="float64")
     for cat_col in cat_cols:
@@ -765,8 +776,7 @@ def pvals_num_cat(
                 # Less than 2 different values of categorical feature in the subset
                 p = np.nan
             else:
-                x = df_subset.groupby(cat_col)[num_col].agg(list).to_numpy()
-                p = stat_func(n_cats)(*x)[1]
+                p = stat_func(n_cats)(df_subset, cat_col, num_col)[1]
 
             df_pvals.loc[cat_col, num_col] = p
 

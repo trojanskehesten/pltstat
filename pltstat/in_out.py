@@ -1,4 +1,5 @@
-"""Functions for save and load files"""
+"""Provides utilities for reading, writing, and preprocessing input and output data files."""
+
 import os
 
 

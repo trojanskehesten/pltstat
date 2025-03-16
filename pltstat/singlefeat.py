@@ -1,3 +1,8 @@
+"""
+Dedicated to the analysis and visualization of single-variable features,
+including plotting functions such as pie charts, count plots, and histograms.
+"""
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -82,8 +87,10 @@ def pie(df_column, ax=None, figsize=None, is_count_order=True, **kwargs):
 
     if is_count_order is True:
         value_counts = value_counts.sort_values()
+        value_counts_norm = value_counts_norm.sort_values()
     else:
         value_counts = value_counts.sort_index()
+        value_counts_norm = value_counts_norm.sort_index()
 
     ax.pie(
         value_counts.values,
