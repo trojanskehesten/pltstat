@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.10.0] - 2025-03-08
+## [0.10.0] - 2025-03-16
 ### Improved
 - Fisher's exact test no longer requires the installation of the R language for functionality.
 - Refactored the project structure for improved maintainability.
