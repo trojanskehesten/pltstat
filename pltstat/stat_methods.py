@@ -94,6 +94,8 @@ def cramer_v_by_obs(obs):
       without Yates' correction.
     - Cramér's V is normalized by the minimum of the number of rows and columns
       in the contingency table minus 1 (`min_dim = min(obs.shape) - 1`).
+    - If the table has a single row or column, Cramér's V is not defined and
+      `0.0` is returned.
 
     Examples
     --------
@@ -111,6 +113,9 @@ def cramer_v_by_obs(obs):
     chi2 = stats.chi2_contingency(obs, correction=False)[0]
     n = obs.sum(axis=0).sum(axis=0)
     min_dim = min(obs.shape) - 1
+    if min_dim == 0:
+        # A table with a single row or column has no association to measure.
+        return 0.0
     corr_cramer_v = np.sqrt((chi2 / n) / min_dim)
     corr_cramer_v = float(corr_cramer_v)
     return corr_cramer_v

@@ -7,10 +7,10 @@ backend (plotly or matplotlib), along with convenient ``set_backend`` /
 
 Notes
 -----
-The ``engine`` attribute defaults to ``"plotly"`` so that every plotting
-function draws with plotly out of the box.  Users who prefer matplotlib
-can set ``pltstat.config.engine = "matplotlib"`` or call
-``pltstat.set_backend("matplotlib")`` once before any plotting calls.
+The ``engine`` attribute defaults to ``"matplotlib"`` so that every
+plotting function draws with matplotlib out of the box.  Users who prefer
+plotly can set ``pltstat.config.engine = "plotly"`` or call
+``pltstat.set_backend("plotly")`` once before any plotting calls.
 Individual functions also accept a keyword-only ``engine`` parameter that
 overrides the global setting for that single call.
 """
@@ -29,12 +29,12 @@ class Config:
     ----------
     engine : Backend
         The default rendering engine.  Must be ``"matplotlib"`` or
-        ``"plotly"``.  Defaults to ``"plotly"``.
+        ``"plotly"``.  Defaults to ``"matplotlib"``.
     """
 
     _engine: Backend
 
-    def __init__(self, engine: Backend = "plotly") -> None:
+    def __init__(self, engine: Backend = "matplotlib") -> None:
         self._engine = engine
 
     @property
@@ -71,10 +71,10 @@ def set_backend(engine: Backend) -> None:
     Examples
     --------
     >>> from pltstat import set_backend, get_backend
-    >>> set_backend("plotly")
-    >>> get_backend()
-    'plotly'
     >>> set_backend("matplotlib")
+    >>> get_backend()
+    'matplotlib'
+    >>> set_backend("plotly")
     """
     config.engine = engine
 
@@ -91,7 +91,7 @@ def get_backend() -> Backend:
     --------
     >>> from pltstat import get_backend
     >>> get_backend()
-    'plotly'
+    'matplotlib'
     """
     return config.engine
 

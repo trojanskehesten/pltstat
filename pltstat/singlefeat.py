@@ -325,7 +325,7 @@ def pie(df_column, ax=None, figsize=None, is_count_order=True, *,
         If True, order slices by descending count.
     engine : {"matplotlib", "plotly"} or None, default=None
         The rendering backend. ``None`` uses the global ``config.engine``
-        (default ``"plotly"``).
+        (default ``"matplotlib"``).
     **kwargs
         Passed to ``ax.pie`` (matplotlib) or ``px.pie`` (plotly).
 
