@@ -530,6 +530,8 @@ def pvals_num(
         annot_rot=0,
         annot_size=None,
         ax=None,
+        color_signif="palegreen",
+        color_non_signif="lightcoral",
         **kwargs,
 ):
     """
@@ -593,7 +595,7 @@ def pvals_num(
 
     # Plot dataframe:
     _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
-                annot_size=annot_size, **kwargs)
+                annot_size=annot_size, color_signif=color_signif, color_non_signif=color_non_signif, **kwargs)
 
     return df_pvals
 
@@ -610,6 +612,8 @@ def pvals_cat(
         annot_rot=0,
         annot_size=None,
         ax=None,
+        color_signif="palegreen",
+        color_non_signif="lightcoral",
         **kwargs,
     ):
     """
@@ -682,7 +686,7 @@ def pvals_cat(
 
     # Plot dataframe:
     _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
-                annot_size=annot_size, **kwargs)
+                annot_size=annot_size, color_signif=color_signif, color_non_signif=color_non_signif, **kwargs)
 
     return df_pvals
 
@@ -700,6 +704,8 @@ def pvals_num_cat(
     annot_rot=0,
     annot_size=None,
     ax=None,
+    color_signif="palegreen",
+    color_non_signif="lightcoral",
     **kwargs,
 ):
     """
@@ -784,21 +790,22 @@ def pvals_num_cat(
         "auto": "Auto Mann-Whitney U or Kruskal-Wallis Test"
     }[method]
     _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
-                annot_size=annot_size, **kwargs)
+                annot_size=annot_size, color_signif=color_signif, color_non_signif=color_non_signif, **kwargs)
 
     return df_pvals
 
 
-def _plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=None, alpha=0.5, annot_rot=0, annot_size=None, **kwargs):
+def _plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=None, alpha=0.5, annot_rot=0, annot_size=None, color_signif="palegreen", color_non_signif="lightcoral", **kwargs):
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=figsize)
 
-    cmap, cbar_kws = cm.get_pval_legend_thr_cmap(alpha=alpha)
+    cmap, norm, cbar_kws = cm.get_pval_legend_thr_cmap(alpha=alpha, color_signif=color_signif, color_non_signif=color_non_signif)
     sns.heatmap(
         df_pvals,
         vmin=0,
         vmax=1,
         cmap=cmap,
+        norm=norm,
         annot=annot,
         fmt=".2f",
         linewidths=1,
