@@ -1,6 +1,9 @@
 # pltstat: A Python Library for Statistical Data Visualization
 
-[![image](https://img.shields.io/pypi/v/pltstat.svg)](https://pypi.org/project/pltstat/)
+[![PyPI version](https://img.shields.io/pypi/v/pltstat.svg)](https://pypi.org/project/pltstat/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pltstat.svg)](https://pypi.org/project/pltstat/)
+[![License](https://img.shields.io/github/license/trojanskehesten/pltstat.svg)](LICENSE)
+[![GitHub last commit](https://img.shields.io/github/last-commit/trojanskehesten/pltstat.svg)](https://github.com/trojanskehesten/pltstat)
 
 `pltstat` is a Python library designed to facilitate the visualization of statistical data analysis. This library includes a variety of tools and methods to streamline data exploration, statistical computation, and graphical representation.
 
@@ -122,7 +125,7 @@ df = pd.DataFrame(data)
 sf.pie(df["A/B Test Group"])
 ```
 **Result 1**  
-<img src="docs/pie_plot.png" alt="Pie plot example" width="200"/>
+<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.10.1/docs/pie_plot.png" alt="Pie plot example" width="200"/>
 
 ### Example 2: Boxplot  
 ```python
@@ -145,7 +148,7 @@ df = pd.DataFrame(data)
 tf.boxplot(df, "gender", "age")
 ```
 **Result 2**  
-<img src="docs/boxplot.png" alt="Distribution boxplot example" width="800"/>
+<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.10.1/docs/boxplot.png" alt="Distribution boxplot example" width="800"/>
 
 ### Example 3: Boxplot and Distribution Plot
 ```python
@@ -164,7 +167,7 @@ df = pd.DataFrame({
 tf.dis_box_plot(df, cat_feat='category', num_feat='value')
 ```
 **Result 3**  
-<img src="docs/dis_box_plot.png" alt="Distribution boxplot example" width="800"/>
+<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.10.1/docs/dis_box_plot.png" alt="Distribution boxplot example" width="800"/>
 
 ---
 
