@@ -107,6 +107,28 @@ After installation the package, you can start using `pltstat` by importing the n
 ## Usage
 Each module in `pltstat` is designed to be modular and reusable. Import the required module and use its functions to visualize your statistical data.  
 
+### Rendering backend
+
+`pltstat` supports two rendering backends: **plotly** (the default) and
+**matplotlib**.  Switch the default once before any plotting calls, or
+override it per call with the `engine=` keyword argument.
+
+```python
+import pltstat
+from pltstat import singlefeat as sf
+
+# Use plotly (default) - returns a plotly Figure
+pltstat.set_backend("plotly")
+fig = sf.pie(df["A/B Test Group"])
+
+# Use matplotlib - draws in place (returns None)
+pltstat.set_backend("matplotlib")
+sf.pie(df["A/B Test Group"])
+
+# Per-call override: use matplotlib for one call while plotly is default
+fig = sf.pie(df["A/B Test Group"], engine="matplotlib")
+```
+
 ### Example 1: Pie Chart  
 ```python
 import pandas as pd

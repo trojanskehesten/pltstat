@@ -8,6 +8,8 @@ from matplotlib import ticker
 import numpy as np
 import seaborn as sns
 
+from .config import _resolve_engine, _ensure_plotly
+
 
 _HIGH = 24
 _N_BINS = 24
@@ -34,7 +36,6 @@ def rad2val(a, high=_HIGH):
     --------
     >>> import numpy as np
     >>> from pltstat.circle import rad2val
-
     >>> a = [0, np.pi, 4, 8]
     >>> rad2val(a, high=24)
     array([ 0., 12., 15.27887454, 30.55774907])
@@ -64,13 +65,9 @@ def val2rad(a, high=_HIGH):
     --------
     >>> import numpy as np
     >>> from pltstat.circle import val2rad
-
     >>> a = [0, 3, 19, 25]
     >>> val2rad(a, high=24)
     array([0., 0.78539816, 4.97418837, 6.54498469])
-
-    >>> val2rad(a, high=24) / np.pi
-    array([0., 0.25, 1.58333333, 2.08333333])
     """
     a = np.array(a)
     a = a / high * 2 * np.pi
@@ -78,91 +75,153 @@ def val2rad(a, high=_HIGH):
 
 
 def hist(
-    a, n_bins=_N_BINS, high=_HIGH, bottom=0.1, title=None, figsize=None, ax=None, return_ax=False, **kwargs,
+    a, n_bins=_N_BINS, high=_HIGH, bottom=0.1, title=None, figsize=None,
+    ax=None, return_ax=False, *, engine=None, **kwargs,
 ):
+    """\
+
+    Plot histogram to show distributions of circular datasets.
+
+    Parameters
+    ----------
+    a : array_like
+        Input array in measures with the ``high`` boundary for the sample range.
+    n_bins : int, default: {n_bins}
+        The number of bins to produce. Raises ValueError if ``n_bins < 2``.
+    high : float or int, default: {high}
+        High boundary for the sample range.
+    bottom : float, default: 0.1
+        Proportion of location of the bottom of each bin, where 0 is center
+        of the circle, and 1 is the edge. Bins are drawn from
+        ``bottom * max(bins)`` to ``bottom * max(bins) + hist(x, bins)``.
+        Valid range is [0, 1].
+    title : str or None, default: None
+        Text to use for the title.
+    figsize : (float, float) or None, default: None
+        Width, height in inches (matplotlib only).
+    ax : :class:`matplotlib.axes.Axes` or None, default: None
+       Axes object to draw the plot onto (matplotlib only).
+    return_ax : bool, default: False
+        If True, return the ``ax`` (matplotlib only).
+    engine : {{"matplotlib", "plotly"}} or None, default: None
+        The rendering backend.
+    **kwargs : key, value mappings
+        Other keyword arguments are passed to ``ax.hist`` (matplotlib).
+
+    Returns
+    -------
+    ax or plotly.graph_objects.Figure or None
+        For matplotlib: the Axes if ``return_ax`` is True, else None.
+        For plotly: a ``go.Figure``.
+
+    Raises
+    ------
+    ValueError
+        If ``n_bins < 2``.
+
+    Example
+    --------
+    >>> import numpy as np
+    >>> from pltstat.circle import hist
+    >>> np.random.seed(0)
+    >>> a = np.random.randint(0, 24, 30)
+    >>> hist(a, 12)
+    """.format(n_bins=_N_BINS, high=_HIGH)
+
     if n_bins < 2:
-        raise ValueError("Received an invalid number of bins. Number of bins must be at least 2, and must be an int.")
+        raise ValueError(
+            "Received an invalid number of bins. Number of bins must be "
+            "at least 2, and must be an int."
+        )
 
-    a = a / high * 2 * np.pi  # h to rad
-
-    def radian_function(x, y):
-        """Helper function for labeling the x-axis"""
-        rad_x = x / np.pi / 2
-        return f"{(rad_x * high):.3g}"
+    engine = _resolve_engine(engine)
+    a = np.array(a)
+    a_rad = a / high * 2 * np.pi
 
     theta = np.linspace(0, 2 * np.pi, n_bins, endpoint=False)
     bins = np.linspace(0, 2 * np.pi, n_bins + 1, endpoint=True)
 
+    counts, _ = np.histogram(a_rad, bins=bins)
+    max_bin = counts.max()
+    bottom_val = max_bin * bottom
+
+    if engine == "plotly":
+        return _hist_plotly(
+            theta, counts, bins, bottom_val, title, high, n_bins,
+        )
+
+    return _hist_mpl(
+        a_rad, theta, bins, bottom_val, title, figsize, ax, return_ax,
+        **kwargs,
+    )
+
+
+def _hist_mpl(a_rad, theta, bins, bottom_val, title, figsize, ax,
+              return_ax, **kwargs):
     if ax is None:
-        fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=figsize)
-        # ax = plt.subplot(111, polar=True)
+        fig, ax = plt.subplots(
+            subplot_kw={"projection": "polar"}, figsize=figsize
+        )
 
-    max_bin = np.histogram(a, bins=bins, **kwargs)[0].max()
-    bottom = max_bin * bottom
+    def radian_function(x, y):
+        rad_x = x / np.pi / 2
+        return f"{(rad_x * _HIGH):.3g}"
 
-    # get yticks:
+    # get yticks from a temporary figure
     fig, ax2 = plt.subplots(subplot_kw={"projection": "polar"})
-    ax2.hist(a, bins=bins, edgecolor="black")
+    ax2.hist(a_rad, bins=bins, edgecolor="black")
     yticks = ax2.axes.yaxis.get_ticklocs()
     plt.close(fig)
 
-    ax.hist(a, bins=bins, edgecolor="black", bottom=bottom, **kwargs)
+    ax.hist(a_rad, bins=bins, edgecolor="black", bottom=bottom_val,
+            **kwargs)
 
-    # arrange graph
     ax.set(
         theta_offset=np.pi / 2,
         theta_direction=-1,
         xticks=theta,
-        yticks=yticks + bottom,
+        yticks=yticks + bottom_val,
         yticklabels=yticks,
     )
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(radian_function))
     ax.set_title(title)
     if return_ax:
         return ax
+    return None
 
 
-hist.__doc__ = """\
-Plot histogram to show distributions of circular datasets.
+def _hist_plotly(theta, counts, bins, bottom_val, title, high, n_bins):
+    _ensure_plotly()
+    import plotly.graph_objects as go
 
-Parameters
-----------
-a : array_like
-    Input array in measures with the ``high`` boundary for the sample range.
-n_bins : int, default: {n_bins}
-    The number of bins to produce. Raises ValueError if ``n_bins < 2``.
-high : float or int, default: {high}
-    High boundary for the sample range.
-bottom : float, default: 0.1
-    Proportion of location of the bottom of each bin, where 0 is center of the circle, and 1 is the edge.
-    Bins are drawn from ``bottom * max(bins)`` to ``bottom * max(bins) + hist(x, bins)``.
-    Valid range is [0, 1].
-title : str or None, default: None
-    Text to use for the title.
-figsize : (float, float) or None, default: None
-    Width, height in inches.
-ax : :class:`matplotlib.axes.Axes` or array of Axes or None, default: None
-   Axes object to draw the plot onto, otherwise uses the current Axes. If ``ax`` is None, create nex ``ax``.
-return_ax : bool, default: False
-    Show, it is necessary to return ``ax``.
-kwargs : key, value mappings
-    Other keywords arguments are passed down to :meth:`maptplotlib.axes.Axes.hist`.
+    # Barpolar uses degrees by default; convert theta to degrees
+    theta_deg = np.degrees(theta)
+    # Width of each bar in degrees
+    bar_width = 360.0 / n_bins
 
-Returns
--------
-ax : :class:`matplotlib.axes.Axes` or array of Axes
-    Returns the Axes object with the plot drawn onto it if ``return_ax argument`` is ``True``.
+    bar = go.Barpolar(
+        r=counts,
+        theta=theta_deg,
+        width=bar_width,
+        offset=0,
+        base=bottom_val,
+    )
+    fig = go.Figure(data=bar)
+    fig.update_layout(
+        title=title,
+        polar=dict(
+            angularaxis=dict(
+                direction="clockwise",
+                rotation=90,
+                period=high,
+            ),
+            radialaxis=dict(showline=True),
+        ),
+    )
+    return fig
 
-Example
---------
->>> import numpy as np
->>> from pltstat.circle import hist
->>> np.random.seed(0)
->>> a = np.random.randint(0, 24, 30)
->>> a
-array([ 6, 23, 11, 14, 18,  0, 14,  3, 21, 12, 10, 20, 11,  4,  6,  4, 15,
-       20,  3, 12,  4, 20,  8, 14, 15, 20,  3, 23, 15, 13])
->>> hist(a, 12)""".format(n_bins=_N_BINS, high=_HIGH)
+
+hist.__doc__ = hist.__doc__
 
 
 def mean(a, high=_HIGH, atol=1e-10):
@@ -185,14 +244,15 @@ def mean(a, high=_HIGH, atol=1e-10):
     tau = tau / np.pi / 2 * high
     if tau < 0:
         tau += high
-    # instead of elif, because-1.614809932057922e-15 + 360 => 360, for example a=[10, 350], high=360:
+    # instead of elif, because -1.614809932057922e-15 + 360 => 360,
+    # for example a=[10, 350], high=360:
     if tau >= high:
         tau -= high
     return tau
 
 
 mean.__doc__ = """\
-    Compute the circular mean for samples in a range. 
+    Compute the circular mean for samples in a range.
     The function shows more accurate result than :meth:`scipy.stats.circmean`
 
     Parameters
@@ -205,7 +265,7 @@ mean.__doc__ = """\
         The threshold for radius calculation. If the radius is less than ``atol``, it will be set to 0 and the mean value
         will be NaN. When the radius is 0, it is not possible to calculate the mean value. If the radius is close to 0,
         the mean value can be extremly inaccurate.
-        An ``atol`` equal to ``1e-10`` ensures a mean value accurate to approximately 7 decimal places. 
+        An ``atol`` equal to ``1e-10`` ensures a mean value accurate to approximately 7 decimal places.
 
     Returns
     -------
@@ -233,11 +293,6 @@ def std(a, high=_HIGH):
     s = np.mean(np.sin(a))
     r = np.sqrt(c ** 2 + s ** 2)
 
-    # if radius is 0 than it is not possible to calculate mean value
-    # 1e-10 for 7 signs after dot accuracy
-    # if np.isclose(r, 0, atol=1e-10):
-    #     return np.nan
-
     v = np.sqrt(-2 * np.log(r))
 
     # return from rad
@@ -253,7 +308,7 @@ std.__doc__ = """\
     a : array_like
         Input array in measures with the ``high`` boundary for the sample range.
     high : float or int, default: {high}
-        High boundary for the sample range. 
+        High boundary for the sample range.
 
     Returns
     -------
@@ -273,83 +328,123 @@ std.__doc__ = """\
 
 
 def scatter(
-    deg, y, high=_HIGH, n_ticks=_N_TICKS, title=None, figsize=None, ax=None, return_ax=False, **kwargs
+    deg, y, high=_HIGH, n_ticks=_N_TICKS, title=None, figsize=None,
+    ax=None, return_ax=False, *, engine=None, **kwargs
 ):
-    BOTTOM_EDGE = 0.2
-    UPPER_EDGE = 0.1
+    """\
 
-    rads = deg / high * 2 * np.pi  # h to rad
+    Draw a scatter plot of circular datasets.
+
+    Parameters
+    ----------
+    deg : array_like
+        Variables that specify positions on the angle axis.
+    y : array_like
+        Variables that specify positions on the y axis.
+    high : float or int, default: {high}
+        High boundary for the sample range.
+    n_ticks : int, default: {n_ticks}
+        The number of angle ticks to produce.
+    figsize : (float, float) or None, default: None
+        Width, height in inches (matplotlib only).
+    ax : :class:`matplotlib.axes.Axes` or None, default: None
+       Axes object to draw the plot onto (matplotlib only).
+    return_ax : bool, default: False
+        If True, return the ``ax`` (matplotlib only).
+    engine : {{"matplotlib", "plotly"}} or None, default: None
+        The rendering backend.
+    **kwargs : key, value mappings
+        Other keyword arguments are passed to ``sns.scatterplot``
+        (matplotlib) or ``go.Scatterpolar`` (plotly).
+
+    Returns
+    -------
+    ax or plotly.graph_objects.Figure or None
+        For matplotlib: the Axes if ``return_ax`` is True, else None.
+        For plotly: a ``go.Figure``.
+
+    Example
+    --------
+    >>> import numpy as np
+    >>> from pltstat.circle import scatter
+    >>> np.random.seed(0)
+    >>> deg = np.linspace(0, 24, 20, endpoint=False)
+    >>> temp = np.concatenate((
+    ...     np.repeat([36.6], 10),
+    ...     np.linspace(36.6, 40, 10, endpoint=False),
+    ... ))
+    >>> scatter(deg, temp, s=20, marker='o')
+    """.format(n_ticks=_N_TICKS, high=_HIGH)
+
+    engine = _resolve_engine(engine)
+
+    if engine == "plotly":
+        return _scatter_plotly(deg, y, high, n_ticks, title)
+
+    return _scatter_mpl(deg, y, high, n_ticks, title, figsize, ax,
+                       return_ax, **kwargs)
+
+
+def _scatter_mpl(deg, y, high, n_ticks, title, figsize, ax, return_ax,
+                 **kwargs):
+    rads = np.array(deg) / high * 2 * np.pi
     theta = np.linspace(0, 2 * np.pi, n_ticks, endpoint=False)
 
     def radian_function(x, y):
-        """Helper function for labeling the x-axis"""
         rad_x = x / np.pi / 2
         return f"{(rad_x * high):.3g}"
 
     if ax is None:
-        fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=figsize)
+        fig, ax = plt.subplots(
+            subplot_kw={"projection": "polar"}, figsize=figsize
+        )
 
+    y = np.array(y)
     y_max = max(y)
     y_min = min(y)
     y_diff = y_max - y_min
+    BOTTOM_EDGE = 0.2
+    UPPER_EDGE = 0.1
 
     sns.scatterplot(x=rads, y=y, ax=ax, **kwargs)
-    ax.set_ylim((y_min - y_diff * BOTTOM_EDGE, y_max + y_diff * UPPER_EDGE))
+    ax.set_ylim(
+        (y_min - y_diff * BOTTOM_EDGE, y_max + y_diff * UPPER_EDGE)
+    )
 
-    # arrange graph
     ax.set(
         theta_offset=np.pi / 2,
         theta_direction=-1,
         xticks=theta,
-        # yticks=yticks,
-        # yticklabels=yticks,
     )
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(radian_function))
     ax.set_title(title)
     if return_ax:
         return ax
+    return None
 
 
-scatter.__doc__ = """\
-Draw a scatter plot of circular datasets.
+def _scatter_plotly(deg, y, high, n_ticks, title):
+    _ensure_plotly()
+    import plotly.graph_objects as go
 
-Parameters
-----------
-deg : array_like
-    Variables that specify positions on the angle axis.
-y : array_like
-    Variables that specify positions on the y axis.
-high : float or int, default: {high}
-    High boundary for the sample range.
-n_ticks : int, default: {n_ticks}
-    The number of angle ticks to produce.
-ax : :class:`matplotlib.axes.Axes` or array of Axes or None, default: None
-   Axes object to draw the plot onto, otherwise uses the current Axes. If ``ax`` is None, create nex ``ax``.
-return_ax : bool, default: False
-    Show, it is necessary to return ``ax``.
-kwargs : key, value mappings
-    Other keywords arguments are passed down to :meth:`seaborn.scatterplot`.
+    deg = np.array(deg)
+    y = np.array(y)
+    theta_deg = deg / high * 360.0
 
-Returns
--------
-ax : :class:`matplotlib.axes.Axes` or array of Axes
-    Returns the Axes object with the plot drawn onto it if ``return_ax argument`` is ``True``.
-
-
-    :return: ax if return_ax is True, else - return None
-
-Example
---------
->>> import numpy as np
->>> from pltstat.circle import scatter
->>> np.random.seed(0)
->>> deg = np.linspace(0, 24, 20, endpoint=False)
->>> deg
-array([ 0. ,  1.2,  2.4,  3.6,  4.8,  6. ,  7.2,  8.4,  9.6, 10.8, 12. ,
-       13.2, 14.4, 15.6, 16.8, 18. , 19.2, 20.4, 21.6, 22.8])
->>> temp = np.concatenate((np.repeat([36.6], 10), np.linspace(36.6, 40, 10, endpoint=False)))
->>> temp
-array([36.6 , 36.6 , 36.6 , 36.6 , 36.6 , 36.6 , 36.6 , 36.6 , 36.6 ,
-       36.6 , 36.6 , 36.94, 37.28, 37.62, 37.96, 38.3 , 38.64, 38.98,
-       39.32, 39.66])
->>> scatter(deg, temp, s=20, marker='o')""".format(n_ticks=_N_TICKS, high=_HIGH)
+    scatter = go.Scatterpolar(
+        r=y,
+        theta=theta_deg,
+        mode="markers",
+    )
+    fig = go.Figure(data=scatter)
+    fig.update_layout(
+        title=title,
+        polar=dict(
+            angularaxis=dict(
+                direction="clockwise",
+                rotation=90,
+                period=high,
+            ),
+        ),
+    )
+    return fig

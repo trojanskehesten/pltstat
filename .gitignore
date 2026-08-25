@@ -21,3 +21,7 @@ tests.py
 # Setup results
 dist/
 pltstat.egg-info/
+
+# Claude Code (local-only, never commit)
+CLAUDE.md
+.claude/
