@@ -3,24 +3,32 @@ Contains custom colormap utilities for visualizations, such as rendering correla
 or creating two-colored maps for p-values with a threshold (e.g., alpha).
 """
 
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import BoundaryNorm, ListedColormap
 
 
-def get_pval_legend_thr_cmap(alpha=0.05):
+def get_pval_legend_thr_cmap(alpha=0.05, color_signif="palegreen", color_non_signif="lightcoral"):
     """
-    Get Red-Green LinearSegmentedColormap for plot of p-values with ``alpha`` threshold and ``cbar_kws`` for legend.
-    It is green when a value is less than threshold and red in another case
+    Get Red-Green ListedColormap for plot of p-values with ``alpha`` threshold,
+    ``norm`` and ``cbar_kws`` for legend. It is green when a value is less than
+    threshold and red in another case.
 
     Parameters
     ----------
     alpha : float, default: 0.05
         Significance level. Must be in (0, 1)
+    color_signif : str, default: "palegreen"
+        Color of the cells with p-value less than ``alpha`` (significant)
+    color_non_signif : str, default: "lightcoral"
+        Color of the cells with p-value greater or equal to ``alpha``
+        (not significant)
 
     Returns
     -------
-    cmap : :class:`matplotlib.colors.LinearSegmentedColormap`
+    cmap : :class:`matplotlib.colors.ListedColormap`
         Colormap instance for p-values
-    cbar_kws : dict([(str, list)])
+    norm : :class:`matplotlib.colors.BoundaryNorm`
+        Boundary normalization instance for p-values
+    cbar_kws : dict[str, list]
         Dictionary with list of legend ticks
 
     Example
@@ -31,21 +39,16 @@ def get_pval_legend_thr_cmap(alpha=0.05):
     >>> from matplotlib import pyplot as plt
     >>>
     >>> pvals = random((30, 4))
-    >>> cmap, cbar_kws = get_pval_legend_thr_cmap()
+    >>> cmap, norm, cbar_kws = get_pval_legend_thr_cmap()
     >>> plt.figure(figsize=(14, 8))
-    >>> sns.heatmap(pvals, vmin=0, vmax=1, annot=True, fmt='.2f', linewidth=1, cmap=cmap, cbar_kws=cbar_kws);
+    >>> sns.heatmap(pvals, vmin=0, vmax=1, annot=True, fmt='.2f', linewidth=1,
+    ...             cmap=cmap, norm=norm, cbar_kws=cbar_kws);
     """
-    green = "palegreen"
-    red = "lightcoral"
-    cmap = [
-        (0, green),
-        (alpha, green),
-        (alpha, red),
-        (1, red),
-    ]
-    cmap = LinearSegmentedColormap.from_list("custom", cmap)
+    bounds = [0, alpha, 1]
+    cmap = ListedColormap([color_signif, color_non_signif])
+    norm = BoundaryNorm(bounds, cmap.N)
     cbar_kws = {"ticks": [0.0, alpha, 1.0]}
-    return cmap, cbar_kws
+    return cmap, norm, cbar_kws
 
 
 def get_corr_thr_cmap(threshold=0.8, vmin=-1):

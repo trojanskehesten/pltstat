@@ -16,11 +16,10 @@ import numpy as np
 import pandas as pd
 
 from scipy import stats
-from scipy.stats import chi2_contingency, fisher_exact
 
 from sklearn.linear_model import LinearRegression
 
-from .stat_methods import cramer_v_by_obs, matthews
+from .stat_methods import cramer_v_by_obs, chi2_fisher_by_cat, matthews
 from .stat_methods import kruskal_by_cat, mannwhitneyu_by_cat
 
 
@@ -35,7 +34,7 @@ def crosstab(
         is_abs=True,
         is_norm=True,
         figsize=None,
-        exact="auto",
+        method="auto",
         alpha=0.05,
         **kwargs,
 ):
@@ -64,8 +63,10 @@ def crosstab(
         If True, plot the crosstab normalized by row indices.
     figsize : tuple or None, optional, default=None
         The size of the figure. If None, default sizes are used.
-    exact : {'auto', True, False}, optional, default='auto'
-        Whether to use Fisher's exact test. If 'auto', Fisher's test is used when any cell count is less than 5.
+    method : {'auto', 'fisher', 'chi2'}, optional, default='auto'
+        The statistical test to use. If 'auto', Fisher's exact test is used
+        when any cell count in the crosstab is less than 5; otherwise the
+        chi-squared test is used.
     alpha : float, optional, default=0.05
         The threshold for statistical significance (p-value).
     **kwargs : dict
@@ -95,7 +96,7 @@ def crosstab(
     """
     df_subset = df[[x_col, y_col]].dropna()
 
-    def plot_crosstab_abs(exact, ax_count):
+    def plot_crosstab_abs(method, ax_count):
         """Plot Heatmap with absolute values crosstab and statistics"""
 
         if df_subset.shape[0] == 0:
@@ -103,20 +104,8 @@ def crosstab(
             return
         crosstab_df = pd.crosstab(df_subset[x_col], df_subset[y_col], values=values, aggfunc=aggfunc)
 
-        if exact == "auto":
-            exact = crosstab_df.min(axis=None) < 5
-            # Convert numpy.bool to bool:
-            exact = bool(exact)
-        if type(exact) is not bool:
-            err_msg = f"param 'exact' must be False, True, or 'auto', but the value is {exact}"
-            raise ValueError(err_msg)
-
-        if exact is True:
-            test_type = "Exact Fisher"
-            p_value = fisher_exact(crosstab_df)[1]
-        else:
-            test_type = "$chi^2$"
-            p_value = chi2_contingency(crosstab_df)[1]
+        _, p_value, method = chi2_fisher_by_cat(df_subset, x_col, y_col, method=method)
+        test_type = "Exact Fisher" if method == "fisher" else "$chi^2$"
 
         if crosstab_df.shape == (2, 2):
             corr_type = "Matthews"
@@ -134,8 +123,6 @@ def crosstab(
         else:
             ax_count.set_title(title, color=color_title or "k")
         sns.heatmap(crosstab_df, annot=True, fmt=".0f", linewidths=1, cmap="coolwarm", ax=ax_count, **kwargs)
-
-        return exact
 
     def plot_crosstab_norm(ax_norm):
         """Plot Heatmap with normalized by row indices crosstab"""
@@ -165,14 +152,14 @@ def crosstab(
         figsize = figsize or (10, 3)
         fig, ax = plt.subplots(1, 2, figsize=figsize)
 
-        plot_crosstab_abs(exact, ax_count=ax[0])
+        plot_crosstab_abs(method, ax_count=ax[0])
         plot_crosstab_norm(ax_norm=ax[1])
     else:
         figsize = figsize or (5, 3)
         fig, ax = plt.subplots(1, 1, figsize=figsize)
 
         if is_abs is None:
-            plot_crosstab_abs(exact, ax_count=ax)
+            plot_crosstab_abs(method, ax_count=ax)
         elif is_norm is None:
             plot_crosstab_norm(ax_norm=ax)
         else:
