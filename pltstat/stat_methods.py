@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from scipy import stats
-from scipy.stats import kruskal, mannwhitneyu
+from scipy.stats import chi2_contingency, fisher_exact, kruskal, mannwhitneyu
 
 from sklearn.metrics import matthews_corrcoef
 
@@ -111,6 +111,8 @@ def cramer_v_by_obs(obs):
     chi2 = stats.chi2_contingency(obs, correction=False)[0]
     n = obs.sum(axis=0).sum(axis=0)
     min_dim = min(obs.shape) - 1
+    if min_dim == 0:
+        return 0.0
     corr_cramer_v = np.sqrt((chi2 / n) / min_dim)
     corr_cramer_v = float(corr_cramer_v)
     return corr_cramer_v
@@ -270,29 +272,71 @@ def kruskal_by_cat(df, cat_feat, num_feat):
 
     return statistic, p_value
 
-# TODO: Fisher?
-# p_value = _stats_r.fisher_test(crosstab_df.values)[0][0]
-# g, p_value = chi2_contingency(crosstab_df)[:2]
-# # Perform Fisher exact test with confidence interval = 0.05
-# result = stats_r.fisher_test(crosstab, conf_int=True, conf_level=0.95)
-#
-# # Extract the p-value and confidence interval from the result
-# p_value = result.rx2("p.value")[0]
-# conf_int = result.rx2("conf.int")
-#
-# # Calculate Pearson correlation coefficient
-# # Convert crosstab to a flattened list for correlation computation
-# # You may need to format the data differently based on your specific case
-# flattened_data = crosstab.flatten()
-# x = [0, 0, 1, 1]  # Corresponds to rows
-# y = [0, 1, 0, 1]  # Corresponds to columns
-# weights = flattened_data
-#
-# # Weighted Pearson correlation
-# correlation_coefficient, _ = pearsonr(
-#     np.repeat(x, weights), np.repeat(y, weights)
-# )
-#
-# print("P-value (Fisher Test):", p_value)
-# print("Confidence Interval (Fisher Test):", list(conf_int))
-# print("Correlation Coefficient (Pearson):", correlation_coefficient)
+
+def chi2_fisher_by_cat(df, cat_feat1, cat_feat2, method="auto"):
+    """
+    Perform Fisher's exact test or chi-squared test for two categorical features.
+
+    Tests the independence of two categorical variables using either Fisher's
+    exact test (suitable for small samples) or Pearson's chi-squared test
+    (suitable for larger samples).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing the categorical features.
+    cat_feat1 : str
+        The name of the first categorical feature.
+    cat_feat2 : str
+        The name of the second categorical feature.
+    method : {'auto', 'fisher', 'chi2'}, default='auto'
+        The statistical test to use. If 'auto', Fisher's exact test is used
+        when any cell count in the contingency table is less than 5;
+        otherwise, the chi-squared test is used.
+
+    Returns
+    -------
+    statistic : float
+        The test statistic: odds ratio for Fisher's exact test, chi-squared
+        statistic for the chi-squared test.
+    p_value : float
+        The p-value of the test.
+    method : {'fisher', 'chi2'}
+        The test actually performed. When ``method='auto'`` is passed in, this
+        reports which test was selected based on the cell counts; otherwise it
+        echoes the requested ``method``. Useful for callers that need to label
+        the test (e.g. in a plot title).
+
+    Notes
+    -----
+    - ``scipy.stats.fisher_exact`` supports tables of any size (R×C) since
+      scipy 1.11; no external package is required for exact inference.
+    - Missing values are removed before constructing the contingency table.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pltstat.stat_methods import chi2_fisher_by_cat
+    >>> data = pd.DataFrame({
+    ...     "A": ["x", "x", "y", "y"],
+    ...     "B": ["a", "b", "a", "b"],
+    ... })
+    >>> chi2_fisher_by_cat(data, "A", "B", method="auto")
+    # (1.0, 1.0, 'fisher')
+    """
+    df_subset = df[[cat_feat1, cat_feat2]].dropna()
+    crosstab_df = pd.crosstab(df_subset[cat_feat1], df_subset[cat_feat2])
+
+    if method == "auto":
+        # Use Fisher's exact test when any cell count is small (< 5);
+        # otherwise fall back to the chi-squared test.
+        method = "fisher" if crosstab_df.min(axis=None) < 5 else "chi2"
+
+    if method == "fisher":
+        statistic, p_value = fisher_exact(crosstab_df)
+    elif method == "chi2":
+        statistic, p_value = chi2_contingency(crosstab_df)[:2]
+    else:
+        raise ValueError(f"`method` must be 'auto', 'fisher', or 'chi2', but got {method}.")
+
+    return statistic, p_value, method
