@@ -1,6 +1,9 @@
 # pltstat: A Python Library for Statistical Data Visualization
 
-[![image](https://img.shields.io/pypi/v/pltstat.svg)](https://pypi.org/project/pltstat/)
+[![PyPI version](https://img.shields.io/pypi/v/pltstat.svg)](https://pypi.org/project/pltstat/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pltstat.svg)](https://pypi.org/project/pltstat/)
+[![License](https://img.shields.io/github/license/trojanskehesten/pltstat.svg)](LICENSE)
+[![GitHub last commit](https://img.shields.io/github/last-commit/trojanskehesten/pltstat.svg)](https://github.com/trojanskehesten/pltstat)
 
 `pltstat` is a Python library designed to facilitate the visualization of statistical data analysis. This library includes a variety of tools and methods to streamline data exploration, statistical computation, and graphical representation.
 
