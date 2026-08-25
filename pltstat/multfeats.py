@@ -18,7 +18,7 @@ import pandas as pd
 from phik import phik_matrix
 
 from scipy import stats
-from scipy.stats import spearmanr, pearsonr, chi2_contingency, fisher_exact
+from scipy.stats import spearmanr, pearsonr
 
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
@@ -27,7 +27,7 @@ from sklearn.metrics import matthews_corrcoef
 from . import cm
 
 from .stat_methods import cramer_v
-from .stat_methods import kruskal_by_cat, mannwhitneyu_by_cat
+from .stat_methods import chi2_fisher_by_cat, kruskal_by_cat, mannwhitneyu_by_cat
 
 def nulls(
     df,
@@ -658,13 +658,10 @@ def pvals_cat(
     >>> pvals_cat(df)
     """
     if method == 'auto':
-        stat_func = lambda crosstab_df: fisher_exact(crosstab_df) if crosstab_df.min(axis=None) < 5 else chi2_contingency(crosstab_df)
         stat_method = "Fisher's Exact or Chi-squared Test"
     elif method == 'fisher':
-        stat_func = lambda crosstab_df: fisher_exact(crosstab_df)
         stat_method = "Fisher's Exact Test"
     elif method == 'chi2':
-        stat_func = lambda ct_df: chi2_contingency(ct_df)
         stat_method = 'Chi-squared Test'
     else:
         raise ValueError("Invalid `method`. Choose 'auto', 'fisher', or 'chi2'. But [{corr_type}] is given")
@@ -679,10 +676,7 @@ def pvals_cat(
             if cat_col1 == cat_col2:
                 p_value = 0.
             else:
-                df_subset = df[[cat_col1, cat_col2]].dropna()
-                crosstab_df = pd.crosstab(df_subset[cat_col1], df_subset[cat_col2])
-
-                p_value = stat_func(crosstab_df)[1]
+                _, p_value, _ = chi2_fisher_by_cat(df, cat_col1, cat_col2, method=method)
 
             df_pvals.loc[cat_col1, cat_col2] = p_value
 
