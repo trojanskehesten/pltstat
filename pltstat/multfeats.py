@@ -36,63 +36,47 @@ from .stat_methods import cramer_v
 from .stat_methods import chi2_fisher_by_cat, kde_curve, kruskal_by_cat, mannwhitneyu_by_cat
 
 
-def nulls(
-    df,
-    figsize=(20, 10),
-    index=None,
-    n_ticks=None,
-    print_str_index=False,
-    print_all=True,
-):
+def _nulls_spec(df, index=None, n_ticks=None, print_str_index=False, print_all=True):
     """
-    Plot a heatmap to visualize null values in the DataFrame.
+    Compute the ticks and the labels of the y axis of a heatmap of nulls.
 
     Parameters
     ----------
     df : pd.DataFrame
-        The input DataFrame containing the data.
-    figsize : tuple, optional, default=(20, 10)
-        The size of the figure (width, height) in inches.
-    index : str, optional, default=None
-        The name of the column to use as the y-axis label. If None, the index is used.
-    n_ticks : int, optional, default=None
-        The number of y-axis ticks to display. If None, 10+1 ticks will be displayed.
-    print_str_index : bool, optional, default=False
-        If True and the index is a string type, print the index values as labels.
-    print_all : bool, optional, default=True
-        If True, display all index values; if False, display only the `n_ticks` specified.
+        The DataFrame whose missing values are drawn.
+    index : str or None, default: None
+        Name of the column used to label the y axis. If None, the index of
+        the DataFrame is used.
+    n_ticks : int or None, default: None
+        Number of ticks of the y axis. If None, 11 ticks are used.
+    print_str_index : bool, default: False
+        If True and the labels are strings, they are printed as labels.
+    print_all : bool, default: True
+        If True, every label is printed instead of only ``n_ticks`` of them.
 
     Returns
     -------
-    None
-        The function creates a heatmap plot of null values and does not return any value.
+    y_ticks : np.ndarray
+        Positions of the ticks of the y axis.
+    y_labels : array-like
+        Labels of the ticks, aligned with ``y_ticks``.
+    index : str
+        Name of the y axis.
 
     Notes
     -----
-    - The plot shows the null values in the DataFrame as black color.
-    - The function dynamically adjusts the y-axis labels depending on the input DataFrame index or the specified `index` column.
+    The ticks are computed apart from the drawing, so that both engines label
+    the y axis in the same way.
 
-    Example
+    Examples
     --------
-    Basic usage with default settings.
-
     >>> import pandas as pd
-    >>> import numpy as np
-    >>> from pltstat.multfeats import nulls
-    >>>
-    >>> df = pd.DataFrame({
-    >>>     'A': [1, 2, np.nan, 4],
-    >>>     'B': [np.nan, 2, 3, 4],
-    >>>     'C': [1, np.nan, np.nan, 4]
-    >>> })
-    >>>
-    >>> nulls(df)
+    >>> from pltstat.multfeats import _nulls_spec
+    >>> data = pd.DataFrame({"A": [1, None, 3]})
+    >>> ticks, labels, name = _nulls_spec(data, n_ticks=3)
+    >>> name
+    'index'
     """
-    plt.figure(figsize=figsize)
-    sns.heatmap(
-        df.isnull().apply(np.invert), yticklabels=False, cbar=False, vmin=0, vmax=1
-    )
-    plt.title("Null values (black)")
     if n_ticks is None:
         n_ticks = 11  # 10+1
     y_ticks = np.linspace(0, len(df) - 1, n_ticks).astype("int64")
@@ -129,11 +113,311 @@ def nulls(
             else:
                 y_labels = y_ticks
 
+    return y_ticks, y_labels, index
+
+
+def _nulls_plotly(df, y_ticks, y_labels, index, figsize=(20, 10)):
+    """
+    Draw a heatmap of the missing values of a DataFrame with plotly.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame whose missing values are drawn.
+    y_ticks : np.ndarray
+        Positions of the ticks of the y axis.
+    y_labels : array-like
+        Labels of the ticks, aligned with ``y_ticks``.
+    index : str
+        Name of the y axis.
+    figsize : tuple, default: (20, 10)
+        Size of the figure in inches, converted to pixels.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The heatmap, with the missing values drawn in black.
+    """
+    go, _ = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    values = df.isnull().apply(np.invert).values.astype(int)
+
+    fig = go.Figure(
+        go.Heatmap(
+            z=values,
+            x=[str(column) for column in df.columns],
+            zmin=0,
+            zmax=1,
+            colorscale=[[0.0, "black"], [1.0, "#c6dbef"]],
+            showscale=False,
+            hovertemplate="%{x}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title="Null values (black)",
+        width=width,
+        height=height,
+        yaxis={
+            "title": index,
+            "tickmode": "array",
+            "tickvals": y_ticks,
+            "ticktext": [str(label) for label in y_labels],
+            # Seaborn draws the first row at the top, plotly at the bottom
+            "autorange": "reversed",
+        },
+    )
+
+    return fig
+
+
+def _dist_qq_plot_plotly(df, figsize, n_cols):
+    """
+    Draw a histogram and a Q-Q plot of every feature with plotly.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame containing the features to plot.
+    figsize : tuple
+        Size of the figure in inches, converted to pixels.
+    n_cols : int
+        Number of columns of the grid of subplots.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The grid of histograms and Q-Q plots.
+    shapiros : list[float]
+        p-value of the Shapiro-Wilk test of every feature.
+
+    Notes
+    -----
+    :func:`scipy.stats.probplot` is called without its ``plot`` argument, so
+    the quantiles are computed without drawing anything with matplotlib.
+    """
+    go, make_subplots = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    n_rows = int(np.ceil(2 * df.shape[1] / n_cols))
+
+    titles = []
+    shapiros = []
+    panels = []
+    for col in df:
+        median = df[col].median()
+        pval = stats.shapiro(df[col]).pvalue
+        shapiros.append(pval)
+        titles.append(col + "<br>Median=%.2f" % median)
+        titles.append(col + "<br>Shapiro pval=%.2f" % pval)
+        panels.append(col)
+
+    # Pad the titles so that every cell of the grid has one
+    titles += [""] * (n_rows * n_cols - len(titles))
+
+    fig = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=titles)
+
+    i = 0
+    for col in panels:
+        row, position = i // n_cols + 1, i % n_cols + 1
+        fig.add_trace(
+            go.Histogram(x=df[col], name=str(col), showlegend=False),
+            row=row,
+            col=position,
+        )
+        i += 1
+
+        row, position = i // n_cols + 1, i % n_cols + 1
+        (osm, osr), (slope, intercept, _) = stats.probplot(df[col], dist="norm")
+        fig.add_trace(
+            go.Scattergl(
+                x=osm, y=osr, mode="markers",
+                marker={"size": 3}, name=str(col), showlegend=False,
+            ),
+            row=row,
+            col=position,
+        )
+        line_x = np.array([osm.min(), osm.max()])
+        fig.add_trace(
+            go.Scatter(
+                x=line_x, y=intercept + slope * line_x, mode="lines",
+                line={"color": "red"}, showlegend=False, hoverinfo="skip",
+            ),
+            row=row,
+            col=position,
+        )
+        i += 1
+
+    fig.update_layout(width=width, height=height)
+
+    return fig, shapiros
+
+
+def _plot_umap_tsne_plotly(X_umap, X_tsne, labels=None, title_pref="",
+                           unnoisy_idx=None, figsize=(16, 6)):
+    """
+    Draw the UMAP and the t-SNE projections side by side with plotly.
+
+    Parameters
+    ----------
+    X_umap : np.ndarray
+        UMAP embedding of shape ``(n_samples, 2)``.
+    X_tsne : np.ndarray
+        t-SNE embedding of shape ``(n_samples, 2)``.
+    labels : array-like or None, default: None
+        Label of every point, used to colour the projections.
+    title_pref : str, default: ""
+        Prefix of the title of both projections.
+    unnoisy_idx : array-like or None, default: None
+        Indices of the points to draw. If None, every point is drawn.
+    figsize : tuple, default: (16, 6)
+        Size of the figure in inches, converted to pixels.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The two projections, sharing one legend.
+
+    Notes
+    -----
+    Plotly has no equivalent of the ``hue`` argument of seaborn, so one trace
+    is added per label. The traces of the two projections share a legend
+    group, so that the legend is shown once instead of twice.
+    """
+    go, make_subplots = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    if title_pref != "":
+        title_pref += " and "
+
+    fig = make_subplots(
+        rows=1,
+        cols=2,
+        subplot_titles=[f"{title_pref}UMAP projection", f"{title_pref}TSNE projection"],
+    )
+
+    if unnoisy_idx is None:
+        umap_xy = X_umap
+        tsne_xy = X_tsne
+        point_labels = labels
+    else:
+        umap_xy = X_umap[unnoisy_idx]
+        tsne_xy = X_tsne[unnoisy_idx]
+        point_labels = None if labels is None else np.asarray(labels)[unnoisy_idx]
+
+    if point_labels is None:
+        groups = [(None, np.arange(len(umap_xy)))]
+        colors = cm.get_palette_hex("tab10", 1)
+    else:
+        point_labels = np.asarray(point_labels)
+        unique_labels = np.unique(point_labels)
+        groups = [(label, np.where(point_labels == label)[0]) for label in unique_labels]
+        colors = cm.get_palette_hex("tab10", len(unique_labels))
+
+    for position, embedding in ((1, umap_xy), (2, tsne_xy)):
+        for (label, idx), color in zip(groups, colors):
+            fig.add_trace(
+                go.Scattergl(
+                    x=embedding[idx, 0],
+                    y=embedding[idx, 1],
+                    mode="markers",
+                    marker={"color": color, "size": 4},
+                    name=str(label),
+                    legendgroup=str(label),
+                    # One shared legend instead of one legend per projection
+                    showlegend=(position == 1) and (label is not None),
+                ),
+                row=1,
+                col=position,
+            )
+
+    fig.update_layout(width=width, height=height)
+
+    return fig
+
+
+def nulls(
+    df,
+    figsize=(20, 10),
+    index=None,
+    n_ticks=None,
+    print_str_index=False,
+    print_all=True,
+    engine=None,
+):
+    """
+    Plot a heatmap to visualize null values in the DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The input DataFrame containing the data.
+    figsize : tuple, optional, default=(20, 10)
+        The size of the figure (width, height) in inches.
+    index : str, optional, default=None
+        The name of the column to use as the y-axis label. If None, the index is used.
+    n_ticks : int, optional, default=None
+        The number of y-axis ticks to display. If None, 10+1 ticks will be displayed.
+    print_str_index : bool, optional, default=False
+        If True and the index is a string type, print the index values as labels.
+    print_all : bool, optional, default=True
+        If True, display all index values; if False, display only the `n_ticks` specified.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``. With matplotlib the function
+        creates a heatmap plot of null values and returns None.
+
+    Notes
+    -----
+    - The plot shows the null values in the DataFrame as black color.
+    - The function dynamically adjusts the y-axis labels depending on the input DataFrame index or the specified `index` column.
+
+    Example
+    --------
+    Basic usage with default settings.
+
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from pltstat.multfeats import nulls
+    >>>
+    >>> df = pd.DataFrame({
+    >>>     'A': [1, 2, np.nan, 4],
+    >>>     'B': [np.nan, 2, 3, 4],
+    >>>     'C': [1, np.nan, np.nan, 4]
+    >>> })
+    >>>
+    >>> nulls(df)
+    """
+    engine = _resolve_engine(engine)
+    y_ticks, y_labels, index = _nulls_spec(
+        df,
+        index=index,
+        n_ticks=n_ticks,
+        print_str_index=print_str_index,
+        print_all=print_all,
+    )
+
+    if engine == "plotly":
+        return _nulls_plotly(df, y_ticks, y_labels, index, figsize=figsize)
+
+    plt.figure(figsize=figsize)
+    sns.heatmap(
+        df.isnull().apply(np.invert), yticklabels=False, cbar=False, vmin=0, vmax=1
+    )
+    plt.title("Null values (black)")
+
     plt.ylabel(index)
     plt.yticks(y_ticks, y_labels)
 
+    return None
 
-def dist_qq_plot(df, figsize, **kwargs):
+
+def dist_qq_plot(df, figsize, engine=None, fig_return=False, **kwargs):
     """
     Plot histograms and Q-Q plots for each feature of the DataFrame, along with the Shapiro-Wilk test p-values.
 
@@ -143,13 +427,22 @@ def dist_qq_plot(df, figsize, **kwargs):
         The DataFrame containing the features to be plotted. Each feature will have its own histogram and Q-Q plot.
     figsize : tuple
         The size of the figure (width, height) in inches.
+        With ``engine="plotly"`` it is converted to pixels at 100 dpi.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
+    fig_return : bool, optional, default=False
+        If True, the figure is returned next to the p-values.
     **kwargs : keyword arguments
         Additional arguments passed to the `sns.histplot()` function for customizing the histogram plots.
+        They are ignored when ``engine="plotly"``.
 
     Returns
     -------
     shapiros : np.ndarray
         An array containing the Shapiro-Wilk test p-values for each feature in the DataFrame.
+        When ``fig_return`` is True, the pair ``(shapiros, figure)`` is
+        returned; the figure is None with matplotlib.
 
     Notes
     -----
@@ -195,6 +488,16 @@ def dist_qq_plot(df, figsize, **kwargs):
         return
     n_rows = int(np.ceil(2 * n_cols_df / n_cols))
 
+    engine = _resolve_engine(engine)
+    if engine == "plotly":
+        fig, shapiros = _dist_qq_plot_plotly(df, figsize=figsize, n_cols=n_cols)
+        shapiros = np.array(shapiros)
+        if fig_return:
+            return shapiros, fig
+        if get_auto_show():
+            fig.show()
+        return shapiros
+
     #     if n_cols == 8:  ## TODO: calc width and height of figsize
     #         width = 20
     #     elif n_cols == 6:
@@ -229,6 +532,9 @@ def dist_qq_plot(df, figsize, **kwargs):
             shapiros.append(pval)
 
     shapiros = np.array(shapiros)
+
+    if fig_return:
+        return shapiros, None
 
     return shapiros
 
@@ -295,7 +601,8 @@ def embeddings_creation(X, n_components=2, standardize=True, random_state=0, uma
     return X_umap, X_tsne
 
 
-def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None, figsize=(16, 6)):
+def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
+                   figsize=(16, 6), engine=None):
     """
     Plot UMAP and t-SNE projections of data with cluster labels, optionally excluding noisy points.
 
@@ -315,14 +622,21 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
         Indices of non-noisy points. If provided, only those points will be plotted.
     figsize : tuple, optional, default=(16, 6)
         The size of the figure.
+        With ``engine="plotly"`` it is converted to pixels at 100 dpi.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
 
     Returns
     -------
-    None
-        The function creates a plot in place and does not return any value.
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``. With matplotlib the function
+        creates a plot in place and returns None.
 
     Notes
     -----
+    With plotly the two projections share one legend, because plotly has no
+    equivalent of the ``hue`` argument of seaborn and needs one trace per label.
     The function generates two side-by-side scatter plots showing the results of
     dimensionality reduction using UMAP and t-SNE, with the points colored according to
     the given cluster labels. If `unnoisy_idx` is provided, only the non-noisy points
@@ -341,6 +655,18 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
     """
     if isinstance(labels, str):
         labels = labels.astype("str")  # TODO str for categorical palette
+
+    engine = _resolve_engine(engine)
+    if engine == "plotly":
+        return _plot_umap_tsne_plotly(
+            X_umap,
+            X_tsne,
+            labels=labels,
+            title_pref=title_pref,
+            unnoisy_idx=unnoisy_idx,
+            figsize=figsize,
+        )
+
     fig, ax = plt.subplots(1, 2, figsize=figsize)
 
     if title_pref != "":
@@ -371,6 +697,8 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
             palette=palette,
             ax=ax[1],
         )
+
+    return None
 
 
 def heatmap_corr(
