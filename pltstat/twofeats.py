@@ -7,9 +7,11 @@ and other statistical metrics to summarize relationships between
 the two features.
 """
 
+from dataclasses import dataclass
 from types import ModuleType
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_hex
 import seaborn as sns
 
 import numpy as np
@@ -19,8 +21,611 @@ from scipy import stats
 
 from sklearn.linear_model import LinearRegression
 
+from . import cm
+from .cm import format_matrix as _format_matrix
+from .config import _figsize_to_px, _import_plotly, _resolve_engine, _warn_ignored_mpl_params
 from .stat_methods import cramer_v_by_obs, chi2_fisher_by_cat, matthews
-from .stat_methods import kruskal_by_cat, mannwhitneyu_by_cat
+from .stat_methods import kde_curve, kruskal_by_cat, mannwhitneyu_by_cat
+
+
+# --- Specs: plot-ready data shared by both engines ---
+
+
+@dataclass(frozen=True)
+class _CrosstabSpec:
+    """
+    Plot-ready data of a crosstab.
+
+    Attributes
+    ----------
+    crosstab_abs : pd.DataFrame or None
+        Crosstab of the absolute values, or None when the subset is empty.
+    crosstab_norm : pd.DataFrame or None
+        Crosstab normalized by index, or None when the subset is empty.
+    p_value : float or None
+        p-value of the test of independence of the two features.
+    correlation : float or None
+        Association between the two features.
+    test_type_mpl : str or None
+        Name of the test, with the mathtext markup understood by matplotlib.
+    test_type_plotly : str or None
+        Name of the test, as plain text for plotly.
+    corr_type : str or None
+        Name of the association measure, "Matthews" or "Cramer V".
+    is_empty : bool
+        True when the two features have no common non missing observation.
+    """
+
+    crosstab_abs: object
+    crosstab_norm: object
+    p_value: object
+    correlation: object
+    test_type_mpl: object
+    test_type_plotly: object
+    corr_type: object
+    is_empty: bool
+
+
+@dataclass(frozen=True)
+class _CorrSpec:
+    """
+    Plot-ready data of a correlation scatter plot.
+
+    Attributes
+    ----------
+    x : np.ndarray
+        Observations of the feature drawn on the x axis.
+    y : np.ndarray
+        Observations of the feature drawn on the y axis.
+    col_x : str
+        Name of the feature drawn on the x axis.
+    col_y : str
+        Name of the feature drawn on the y axis.
+    x_mean : float
+        Mean of ``x``.
+    y_mean : float
+        Mean of ``y``.
+    reg_x : np.ndarray or None
+        Ends of the regression line on the x axis, or None when it is hidden.
+    reg_y : np.ndarray or None
+        Ends of the regression line on the y axis, or None when it is hidden.
+    reg_label : str or None
+        Label of the regression line, or None when it is hidden.
+    title : str or None
+        Title with the correlation and its p-value, or None when the
+        regression is hidden.
+    """
+
+    x: object
+    y: object
+    col_x: str
+    col_y: str
+    x_mean: float
+    y_mean: float
+    reg_x: object
+    reg_y: object
+    reg_label: object
+    title: object
+
+
+def _crosstab_spec(df, x_col, y_col, values=None, aggfunc=None, method="auto"):
+    """
+    Compute the plot-ready data of a crosstab.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame containing the two categorical features.
+    x_col : str
+        Name of the feature drawn on the x axis.
+    y_col : str
+        Name of the feature drawn on the y axis.
+    values : str or None, default: None
+        Name of the column to aggregate, passed to :func:`pandas.crosstab`.
+    aggfunc : callable or None, default: None
+        Aggregation applied to ``values``.
+    method : {"auto", "fisher", "chi2"}, default: "auto"
+        Test of independence used to compute the p-value.
+
+    Returns
+    -------
+    spec : _CrosstabSpec
+        Crosstabs, p-value and association of the two features.
+
+    Notes
+    -----
+    The statistics are computed once here, so that both engines annotate the
+    heatmap with the same numbers.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pltstat.twofeats import _crosstab_spec
+    >>> data = pd.DataFrame({"A": ["x", "x", "y", "y"], "B": ["u", "v", "u", "v"]})
+    >>> _crosstab_spec(data, "A", "B").corr_type
+    'Matthews'
+    """
+    df_subset = df[[x_col, y_col]].dropna()
+
+    if df_subset.shape[0] == 0:
+        return _CrosstabSpec(
+            crosstab_abs=None,
+            crosstab_norm=None,
+            p_value=None,
+            correlation=None,
+            test_type_mpl=None,
+            test_type_plotly=None,
+            corr_type=None,
+            is_empty=True,
+        )
+
+    crosstab_abs = pd.crosstab(df_subset[x_col], df_subset[y_col], values=values, aggfunc=aggfunc)
+    crosstab_norm = pd.crosstab(
+        df_subset[x_col],
+        df_subset[y_col],
+        normalize="index",
+        values=values,
+        aggfunc=aggfunc,
+    )
+
+    _, p_value, method = chi2_fisher_by_cat(df_subset, x_col, y_col, method=method)
+    if method == "fisher":
+        test_type_mpl = "Exact Fisher"
+        test_type_plotly = "Exact Fisher"
+    else:
+        test_type_mpl = "$chi^2$"
+        # Plotly does not render the mathtext markup of matplotlib
+        test_type_plotly = "chi2"
+
+    if crosstab_abs.shape == (2, 2):
+        corr_type = "Matthews"
+        correlation = matthews(df_subset[x_col], df_subset[y_col])
+    else:
+        corr_type = "Cramer V"
+        correlation = cramer_v_by_obs(crosstab_abs)
+
+    return _CrosstabSpec(
+        crosstab_abs=crosstab_abs,
+        crosstab_norm=crosstab_norm,
+        p_value=p_value,
+        correlation=correlation,
+        test_type_mpl=test_type_mpl,
+        test_type_plotly=test_type_plotly,
+        corr_type=corr_type,
+        is_empty=False,
+    )
+
+
+def _corr_spec(df, col_x, col_y, show_regression=True):
+    """
+    Compute the plot-ready data of a correlation scatter plot.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame containing the two numerical features.
+    col_x : str
+        Name of the feature drawn on the x axis.
+    col_y : str
+        Name of the feature drawn on the y axis.
+    show_regression : bool, default: True
+        If True, the regression line and the correlation are computed.
+
+    Returns
+    -------
+    spec : _CorrSpec
+        Observations, means and regression line of the two features.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pltstat.twofeats import _corr_spec
+    >>> data = pd.DataFrame({"A": [1, 2, 3, 4], "B": [2, 4, 6, 8]})
+    >>> _corr_spec(data, "A", "B").title
+    'r = 1.000, p_value = 0.000'
+    """
+    data = df[[col_x, col_y]].dropna()
+    x = data[col_x].values
+    y = data[col_y].values
+
+    reg_x = None
+    reg_y = None
+    reg_label = None
+    title = None
+
+    if show_regression:
+        lr = LinearRegression().fit(x.reshape((-1, 1)), y)
+        r, p_value = stats.pearsonr(x, y)
+        reg_x = np.array([x.min(), x.max()])
+        reg_y = lr.predict(reg_x.reshape((-1, 1)))
+        reg_label = f"{lr.intercept_:.3f} + {lr.coef_[0]:.3f}x"
+        title = f"r = {r:.3f}, p_value = {p_value:.3f}"
+
+    return _CorrSpec(
+        x=x,
+        y=y,
+        col_x=col_x,
+        col_y=col_y,
+        x_mean=x.mean(),
+        y_mean=y.mean(),
+        reg_x=reg_x,
+        reg_y=reg_y,
+        reg_label=reg_label,
+        title=title,
+    )
+
+
+# --- Matplotlib renderers ---
+
+
+def _crosstab_mpl(spec, title=None, color_title=None, is_abs=True, is_norm=True,
+                  figsize=None, alpha=0.05, **kwargs):
+    """
+    Draw a crosstab with matplotlib.
+
+    Parameters
+    ----------
+    spec : _CrosstabSpec
+        Plot-ready data built by :func:`_crosstab_spec`.
+    title : str or None, default: None
+        Title of the heatmap of absolute values.
+    color_title : str or None, default: None
+        Colour of the titles. If None, the title of the absolute values is
+        green when the p-value is significant and red otherwise.
+    is_abs : bool, default: True
+        If True, the heatmap of absolute values is drawn.
+    is_norm : bool, default: True
+        If True, the heatmap normalized by index is drawn.
+    figsize : tuple or None, default: None
+        Size of the figure in inches.
+    alpha : float, default: 0.05
+        Significance level used to colour the title.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``sns.heatmap()``.
+
+    Returns
+    -------
+    None
+        The function modifies the plot in place and does not return any value.
+    """
+    def plot_crosstab_abs(ax_count):
+        """Plot Heatmap with absolute values crosstab and statistics"""
+        if spec.is_empty:
+            return
+
+        if title is None:
+            ax_count.set_title(
+                "Crosstab. Absolute values\n%s p_value = %.3f; %s corr = %.3f"
+                % (spec.test_type_mpl, spec.p_value, spec.corr_type, spec.correlation),
+                color=color_title or ("g" if spec.p_value <= alpha else "r"),
+            )
+        else:
+            ax_count.set_title(title, color=color_title or "k")
+        sns.heatmap(
+            spec.crosstab_abs, annot=True, fmt=".0f", linewidths=1,
+            cmap="coolwarm", ax=ax_count, **kwargs,
+        )
+
+    def plot_crosstab_norm(ax_norm):
+        """Plot Heatmap with normalized by row indices crosstab"""
+        if spec.is_empty:
+            return
+
+        ax_norm.set_title("Crosstab. Normalized by index", color=color_title or "k")
+        sns.heatmap(
+            spec.crosstab_norm,
+            annot=True,
+            fmt=".2f",
+            vmin=0,
+            vmax=1,
+            linewidths=1,
+            cmap="coolwarm",
+            ax=ax_norm,
+            **kwargs,
+        )
+
+    # Plot Heatmaps and calculate statistics:
+    if is_abs and is_norm:
+        figsize = figsize or (10, 3)
+        fig, ax = plt.subplots(1, 2, figsize=figsize)
+
+        plot_crosstab_abs(ax_count=ax[0])
+        plot_crosstab_norm(ax_norm=ax[1])
+    else:
+        figsize = figsize or (5, 3)
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+        if is_abs is None:
+            plot_crosstab_abs(ax_count=ax)
+        elif is_norm is None:
+            plot_crosstab_norm(ax_norm=ax)
+        else:
+            raise ValueError("Not less that one of is_abs or is_norm must be True")
+
+
+def _corr_mpl(spec, ax=None, show_means=True, show_regression=True, **kwargs):
+    """
+    Draw a correlation scatter plot with matplotlib.
+
+    Parameters
+    ----------
+    spec : _CorrSpec
+        Plot-ready data built by :func:`_corr_spec`.
+    ax : matplotlib.axes.Axes or None, default: None
+        Axes to draw on. If None, a new figure and Axes are created.
+    show_means : bool, default: True
+        If True, the mean of each feature is drawn as a dashed line.
+    show_regression : bool, default: True
+        If True, the regression line is drawn.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``ax.scatter()``.
+
+    Returns
+    -------
+    None
+        The function modifies the plot in place and does not return any value.
+    """
+    x = spec.x
+    y = spec.y
+
+    # Create axes if not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+    # Scatter plot
+    ax.scatter(x, y, c="green", s=2, label="Data Points", **kwargs)
+
+    # Show mean lines
+    if show_means:
+        ax.plot(
+            [spec.x_mean] * 2,
+            [y.min(), y.max()],
+            "--r",
+            label=r"$\overline{%s}$" % spec.col_x.replace("_", r"\_"),
+        )
+        ax.plot(
+            [x.min(), x.max()],
+            [spec.y_mean] * 2,
+            "--b",
+            label=r"$\overline{%s}$" % spec.col_y.replace("_", r"\_"),
+        )
+
+    # Show regression line and correlation
+    if show_regression:
+        ax.plot(spec.reg_x, spec.reg_y, label=spec.reg_label)
+        ax.set_title(spec.title)
+
+    # Axis labels
+    ax.set_xlabel(spec.col_x)
+    ax.set_ylabel(spec.col_y)
+
+    # Legend
+    ax.legend()
+
+
+# --- Plotly renderers ---
+
+
+def _to_plotly_color(color):
+    """
+    Convert a matplotlib colour into a colour understood by plotly.
+
+    Parameters
+    ----------
+    color : str or None
+        Colour as accepted by matplotlib, including the single letter codes
+        such as "g" or "r". None is returned unchanged.
+
+    Returns
+    -------
+    color : str or None
+        Hexadecimal colour, or None when `color` is None.
+
+    Notes
+    -----
+    Plotly rejects the single letter colour codes of matplotlib, so every
+    colour is normalized to its hexadecimal form.
+
+    Examples
+    --------
+    >>> from pltstat.twofeats import _to_plotly_color
+    >>> _to_plotly_color("g")
+    '#008000'
+    >>> _to_plotly_color(None) is None
+    True
+    """
+    if color is None:
+        return None
+    return to_hex(color)
+
+
+def _crosstab_plotly(spec, title=None, color_title=None, is_abs=True, is_norm=True,
+                     figsize=None, alpha=0.05, **kwargs):
+    """
+    Draw a crosstab with plotly.
+
+    Parameters
+    ----------
+    spec : _CrosstabSpec
+        Plot-ready data built by :func:`_crosstab_spec`.
+    title : str or None, default: None
+        Title of the heatmap of absolute values.
+    color_title : str or None, default: None
+        Colour of the titles. If None, the title of the absolute values is
+        green when the p-value is significant and red otherwise.
+    is_abs : bool, default: True
+        If True, the heatmap of absolute values is drawn.
+    is_norm : bool, default: True
+        If True, the heatmap normalized by index is drawn.
+    figsize : tuple or None, default: None
+        Size of the figure in inches, converted to pixels.
+    alpha : float, default: 0.05
+        Significance level used to colour the title.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Heatmap``.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The crosstab.
+    """
+    go, make_subplots = _import_plotly()
+
+    if is_abs and is_norm:
+        figsize = figsize or (10, 3)
+    else:
+        figsize = figsize or (5, 3)
+    width, height = _figsize_to_px(figsize)
+
+    if spec.is_empty:
+        return go.Figure(layout={"width": width, "height": height})
+
+    if title is None:
+        title_abs = (
+            "Crosstab. Absolute values<br>%s p_value = %.3f; %s corr = %.3f"
+            % (spec.test_type_plotly, spec.p_value, spec.corr_type, spec.correlation)
+        )
+        color_abs = _to_plotly_color(color_title) or ("green" if spec.p_value <= alpha else "red")
+    else:
+        title_abs = title
+        color_abs = _to_plotly_color(color_title) or "black"
+
+    title_norm = "Crosstab. Normalized by index"
+    color_norm = _to_plotly_color(color_title) or "black"
+
+    if is_abs and is_norm:
+        titles = [title_abs, title_norm]
+        colors = [color_abs, color_norm]
+        panels = [(spec.crosstab_abs, ".0f", None, None, False),
+                  (spec.crosstab_norm, ".2f", 0, 1, True)]
+    elif is_abs is None:
+        titles, colors = [title_abs], [color_abs]
+        panels = [(spec.crosstab_abs, ".0f", None, None, True)]
+    elif is_norm is None:
+        titles, colors = [title_norm], [color_norm]
+        panels = [(spec.crosstab_norm, ".2f", 0, 1, True)]
+    else:
+        raise ValueError("Not less that one of is_abs or is_norm must be True")
+
+    fig = make_subplots(rows=1, cols=len(panels), subplot_titles=titles)
+
+    for position, (data, fmt, zmin, zmax, showscale) in enumerate(panels, start=1):
+        fig.add_trace(
+            go.Heatmap(
+                z=data.values,
+                x=[str(column) for column in data.columns],
+                y=[str(index) for index in data.index],
+                zmin=zmin,
+                zmax=zmax,
+                colorscale="RdBu_r",
+                text=_format_matrix(data.values, fmt),
+                texttemplate="%{text}",
+                # Reproduce the white grid drawn by seaborn
+                xgap=1,
+                ygap=1,
+                showscale=showscale,
+                hovertemplate="%{y} / %{x}<br>%{z}<extra></extra>",
+                **kwargs,
+            ),
+            row=1,
+            col=position,
+        )
+        fig.update_xaxes(title_text=str(data.columns.name), row=1, col=position)
+        fig.update_yaxes(
+            title_text=str(data.index.name),
+            # Seaborn draws the first row at the top, plotly at the bottom
+            autorange="reversed",
+            row=1,
+            col=position,
+        )
+
+    for annotation, color in zip(fig.layout.annotations, colors):
+        annotation.font.color = color
+
+    fig.update_layout(width=width, height=height)
+
+    return fig
+
+
+def _corr_plotly(spec, show_means=True, show_regression=True, figsize=(8, 6), **kwargs):
+    """
+    Draw a correlation scatter plot with plotly.
+
+    Parameters
+    ----------
+    spec : _CorrSpec
+        Plot-ready data built by :func:`_corr_spec`.
+    show_means : bool, default: True
+        If True, the mean of each feature is drawn as a dashed line.
+    show_regression : bool, default: True
+        If True, the regression line is drawn.
+    figsize : tuple, default: (8, 6)
+        Size of the figure in inches, converted to pixels.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Scattergl``.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The correlation scatter plot.
+    """
+    go, _ = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    fig = go.Figure(
+        go.Scattergl(
+            x=spec.x,
+            y=spec.y,
+            mode="markers",
+            marker={"color": "green", "size": 3},
+            name="Data Points",
+            **kwargs,
+        )
+    )
+
+    if show_means:
+        # Plotly has no mathtext, so the means are named in plain text
+        fig.add_trace(
+            go.Scatter(
+                x=[spec.x_mean] * 2,
+                y=[spec.y.min(), spec.y.max()],
+                mode="lines",
+                line={"color": "red", "dash": "dash"},
+                name=f"mean({spec.col_x})",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=[spec.x.min(), spec.x.max()],
+                y=[spec.y_mean] * 2,
+                mode="lines",
+                line={"color": "blue", "dash": "dash"},
+                name=f"mean({spec.col_y})",
+            )
+        )
+
+    if show_regression:
+        fig.add_trace(
+            go.Scatter(
+                x=spec.reg_x,
+                y=spec.reg_y,
+                mode="lines",
+                name=spec.reg_label,
+            )
+        )
+
+    fig.update_layout(
+        title=spec.title,
+        width=width,
+        height=height,
+        xaxis_title=spec.col_x,
+        yaxis_title=spec.col_y,
+    )
+
+    return fig
+
+
+# --- Public plotting functions ---
 
 
 def crosstab(
@@ -36,6 +641,7 @@ def crosstab(
         figsize=None,
         method="auto",
         alpha=0.05,
+        engine=None,
         **kwargs,
 ):
     """
@@ -69,17 +675,25 @@ def crosstab(
         chi-squared test is used.
     alpha : float, optional, default=0.05
         The threshold for statistical significance (p-value).
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
     **kwargs : dict
-        Additional keyword arguments passed to `sns.heatmap`.
+        Additional keyword arguments to further customize the heatmaps. They are
+        passed to `sns.heatmap` with matplotlib and to
+        ``plotly.graph_objects.Heatmap`` with plotly, so they are engine specific.
 
     Returns
     -------
-    None
-        The function creates and displays the plots.
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``. With matplotlib the function
+        creates and displays the plots and returns None.
 
     Notes
     -----
     - If both `is_abs` and `is_norm` are True, two plots are displayed: absolute values and normalized values.
+    - The name of the chi-squared test uses the mathtext markup of matplotlib,
+      which plotly does not render, so the plotly title shows "chi2".
     - The function can automatically detect and apply the appropriate statistical test (Chi-square or Fisher's exact test).
     - For binary 2x2 tables, Matthews correlation is calculated; otherwise, Cramér's V is used.
 
@@ -94,76 +708,34 @@ def crosstab(
     >>> })
     >>> crosstab(data, x_col="Gender", y_col="Preference")
     """
-    df_subset = df[[x_col, y_col]].dropna()
+    engine = _resolve_engine(engine)
+    spec = _crosstab_spec(df, x_col, y_col, values=values, aggfunc=aggfunc, method=method)
 
-    def plot_crosstab_abs(method, ax_count):
-        """Plot Heatmap with absolute values crosstab and statistics"""
+    if spec.is_empty:
+        print(f"Number of dataframe rows for columns {x_col} and {y_col} is zero")
 
-        if df_subset.shape[0] == 0:
-            print(f"Number of dataframe rows for columns {x_col} and {y_col} is zero")
-            return
-        crosstab_df = pd.crosstab(df_subset[x_col], df_subset[y_col], values=values, aggfunc=aggfunc)
-
-        _, p_value, method = chi2_fisher_by_cat(df_subset, x_col, y_col, method=method)
-        test_type = "Exact Fisher" if method == "fisher" else "$chi^2$"
-
-        if crosstab_df.shape == (2, 2):
-            corr_type = "Matthews"
-            correlation = matthews(df_subset[x_col], df_subset[y_col])
-        else:
-            corr_type = "Cramer V"
-            correlation = cramer_v_by_obs(crosstab_df)
-
-        if title is None:
-            ax_count.set_title(
-                "Crosstab. Absolute values\n%s p_value = %.3f; %s corr = %.3f"
-                % (test_type, p_value, corr_type, correlation),
-                color=color_title or ("g" if p_value <= alpha else "r"),
-            )
-        else:
-            ax_count.set_title(title, color=color_title or "k")
-        sns.heatmap(crosstab_df, annot=True, fmt=".0f", linewidths=1, cmap="coolwarm", ax=ax_count, **kwargs)
-
-    def plot_crosstab_norm(ax_norm):
-        """Plot Heatmap with normalized by row indices crosstab"""
-        crosstab_df = pd.crosstab(
-            df_subset[x_col],
-            df_subset[y_col],
-            normalize="index",
-            values=values,
-            aggfunc=aggfunc,
-        )
-
-        ax_norm.set_title("Crosstab. Normalized by index", color=color_title or "k")
-        sns.heatmap(
-            crosstab_df,
-            annot=True,
-            fmt=".2f",
-            vmin=0,
-            vmax=1,
-            linewidths=1,
-            cmap="coolwarm",
-            ax=ax_norm,
+    if engine == "matplotlib":
+        return _crosstab_mpl(
+            spec,
+            title=title,
+            color_title=color_title,
+            is_abs=is_abs,
+            is_norm=is_norm,
+            figsize=figsize,
+            alpha=alpha,
             **kwargs,
         )
 
-    # Plot Heatmaps and calculate statistics:
-    if is_abs and is_norm:
-        figsize = figsize or (10, 3)
-        fig, ax = plt.subplots(1, 2, figsize=figsize)
-
-        plot_crosstab_abs(method, ax_count=ax[0])
-        plot_crosstab_norm(ax_norm=ax[1])
-    else:
-        figsize = figsize or (5, 3)
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-
-        if is_abs is None:
-            plot_crosstab_abs(method, ax_count=ax)
-        elif is_norm is None:
-            plot_crosstab_norm(ax_norm=ax)
-        else:
-            raise ValueError("Not less that one of is_abs or is_norm must be True")
+    return _crosstab_plotly(
+        spec,
+        title=title,
+        color_title=color_title,
+        is_abs=is_abs,
+        is_norm=is_norm,
+        figsize=figsize,
+        alpha=alpha,
+        **kwargs,
+    )
 
 
 def corr(
@@ -173,6 +745,8 @@ def corr(
     ax=None,
     show_means=True,
     show_regression=True,
+    figsize=(8, 6),
+    engine=None,
     **kwargs,
 ):
     """
@@ -188,17 +762,33 @@ def corr(
         The column name for the y-axis.
     ax : matplotlib.axes.Axes or None, optional, default=None
         The axes on which to draw the plot. If None, a new figure and axes are created.
+        Ignored when ``engine="plotly"``.
     show_means : bool, optional, default=True
         Whether to show the mean lines for both x and y axes.
     show_regression : bool, optional, default=True
         Whether to display the regression line with the correlation coefficient.
+    figsize : tuple of (float, float), optional, default=(8, 6)
+        The size of the figure in inches. Ignored if `ax` is not None.
+        With ``engine="plotly"`` it is converted to pixels at 100 dpi.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
     **kwargs : dict, optional
-        Additional keyword arguments passed to `ax.scatter()`
+        Additional keyword arguments to further customize the scatter plot.
+        They are passed to `ax.scatter()` with matplotlib and to
+        ``plotly.graph_objects.Scattergl`` with plotly, so they are engine
+        specific.
 
     Returns
     -------
-    None
-        The function displays the plot.
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``. With matplotlib the function
+        displays the plot and returns None.
+
+    Notes
+    -----
+    The mean lines are labelled with the mathtext markup of matplotlib, which
+    plotly does not render, so the plotly legend shows "mean(column)".
 
     Example
     --------
@@ -208,48 +798,26 @@ def corr(
     >>> corr(data, "A", "B")
     """
 
-    # Prepare data
-    data = df[[col_x, col_y]].dropna()
-    x = data[col_x].values
-    y = data[col_y].values
+    engine = _resolve_engine(engine)
+    spec = _corr_spec(df, col_x, col_y, show_regression=show_regression)
 
-    # Create axes if not provided
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 6))
-
-    # Scatter plot
-    ax.scatter(x, y, c="green", s=2, label="Data Points", **kwargs)
-
-    # Show mean lines
-    if show_means:
-        ax.plot(
-            [x.mean()] * 2,
-            [y.min(), y.max()],
-            "--r",
-            label=r"$\overline{%s}$" % col_x.replace("_", r"\_"),
-        )
-        ax.plot(
-            [x.min(), x.max()],
-            [y.mean()] * 2,
-            "--b",
-            label=r"$\overline{%s}$" % col_y.replace("_", r"\_"),
+    if engine == "matplotlib":
+        return _corr_mpl(
+            spec,
+            ax=ax,
+            show_means=show_means,
+            show_regression=show_regression,
+            **kwargs,
         )
 
-    # Show regression line and correlation
-    if show_regression:
-        lr = LinearRegression().fit(x.reshape((-1, 1)), y)
-        r, p_value = stats.pearsonr(x, y)
-        x_th = np.array([x.min(), x.max()])
-        y_th = lr.predict(x_th.reshape((-1, 1)))
-        ax.plot(x_th, y_th, label=f"{lr.intercept_:.3f} + {lr.coef_[0]:.3f}x")
-        ax.set_title(f"r = {r:.3f}, p_value = {p_value:.3f}")
-
-    # Axis labels
-    ax.set_xlabel(col_x)
-    ax.set_ylabel(col_y)
-
-    # Legend
-    ax.legend()
+    _warn_ignored_mpl_params(engine, ax=ax)
+    return _corr_plotly(
+        spec,
+        show_means=show_means,
+        show_regression=show_regression,
+        figsize=figsize,
+        **kwargs,
+    )
 
 
 def boxplot(

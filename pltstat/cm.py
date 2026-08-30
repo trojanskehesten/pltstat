@@ -254,3 +254,46 @@ def get_palette_hex(palette="muted", n_colors=None):
     ['#4878d0', '#ee854a']
     """
     return sns.color_palette(palette, n_colors).as_hex()
+
+
+def format_matrix(values, fmt=".2f"):
+    """
+    Render the values of a matrix as the strings annotating a plotly heatmap.
+
+    Parameters
+    ----------
+    values : array-like
+        Matrix of numbers to render.
+    fmt : str, default: ".2f"
+        Format specification of a single value, as used by ``sns.heatmap``.
+
+    Returns
+    -------
+    text : list[list[str]]
+        Rendered values, with an empty string in place of a missing value.
+
+    Notes
+    -----
+    Seaborn accepts the format with a leading dot, while :func:`format` does
+    not, so the leading dot is removed before formatting.
+
+    Examples
+    --------
+    >>> from pltstat.cm import format_matrix
+    >>> format_matrix([[0.5, None]], fmt=".1f")
+    [['0.5', '']]
+    """
+    spec = fmt.lstrip(".") if fmt.startswith(".") else fmt
+    spec = "." + spec if fmt.startswith(".") else spec
+
+    text = []
+    for row in values:
+        rendered = []
+        for value in row:
+            if value is None or (isinstance(value, float) and value != value):
+                rendered.append("")
+            else:
+                rendered.append(format(value, spec))
+        text.append(rendered)
+
+    return text
