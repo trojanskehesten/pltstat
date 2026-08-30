@@ -6,7 +6,7 @@
 from . import config
 from .config import backend, get_backend, set_backend
 
-__version__ = "0.10.1"
+__version__ = "0.11.0"
 __author__ = "Dmitrii Beregovoi"
 __email__ = "dimaforth@gmail.com"
 __all__ = [

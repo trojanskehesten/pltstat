@@ -60,7 +60,7 @@ setup(
     python_requires="~=3.12",
     include_package_data=True,  # Reading Manifest.in
 
-    keywords = "matplotlib, statistics, visualization, dataanalysis",
+    keywords = "matplotlib, plotly, statistics, visualization, dataanalysis",
 
     classifiers=[
         "Development Status :: 4 - Beta",  # "5 - Production/Stable"
