@@ -340,3 +340,69 @@ def chi2_fisher_by_cat(df, cat_feat1, cat_feat2, method="auto"):
         raise ValueError(f"`method` must be 'auto', 'fisher', or 'chi2', but got {method}.")
 
     return statistic, p_value, method
+
+
+def kde_curve(values, clip=None, n_points=200, scale=1.0):
+    """
+    Evaluate a gaussian kernel density estimate on a regular grid.
+
+    The function returns the curve as arrays instead of drawing it, so that it
+    can be rendered by any plotting engine.
+
+    Parameters
+    ----------
+    values : array-like
+        Sample to estimate the density of. Missing values are removed.
+    clip : tuple[float, float] or None, default: None
+        Lower and upper bound of the grid. None uses the range of `values`.
+    n_points : int, default: 200
+        Number of points of the grid.
+    scale : float, default: 1.0
+        Factor applied to the density. Use the bin width times the number of
+        observations to overlay the curve on a histogram of counts.
+
+    Returns
+    -------
+    grid : np.ndarray
+        Points at which the density is evaluated.
+    density : np.ndarray
+        Estimated density multiplied by `scale`.
+
+    Raises
+    ------
+    ValueError
+        If `values` has fewer than two distinct observations, because the
+        kernel bandwidth is then undefined.
+
+    Notes
+    -----
+    The estimate uses Scott's rule for the bandwidth, which is the default of
+    :class:`scipy.stats.gaussian_kde` and of the seaborn density plots.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from pltstat.stat_methods import kde_curve
+    >>> grid, density = kde_curve(np.array([1.0, 2.0, 2.0, 3.0]), n_points=5)
+    >>> grid
+    array([1. , 1.5, 2. , 2.5, 3. ])
+    >>> bool(density.argmax() == 2)
+    True
+    """
+    values = pd.Series(values).dropna().to_numpy(dtype=float)
+
+    if np.unique(values).size < 2:
+        raise ValueError(
+            "`values` must contain at least two distinct observations "
+            "to estimate a density."
+        )
+
+    if clip is None:
+        low, high = values.min(), values.max()
+    else:
+        low, high = clip
+
+    grid = np.linspace(low, high, n_points)
+    density = stats.gaussian_kde(values)(grid) * scale
+
+    return grid, density

@@ -3,7 +3,9 @@ Contains custom colormap utilities for visualizations, such as rendering correla
 or creating two-colored maps for p-values with a threshold (e.g., alpha).
 """
 
-from matplotlib.colors import BoundaryNorm, ListedColormap
+from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap, ListedColormap, to_hex
+
+import seaborn as sns
 
 
 def get_pval_legend_thr_cmap(alpha=0.05, color_signif="palegreen", color_non_signif="lightcoral"):
@@ -80,6 +82,41 @@ def get_corr_thr_cmap(threshold=0.8, vmin=-1):
     >>> plt.figure(figsize=(14, 8))
     >>> sns.heatmap(pvals, vmin=0, vmax=1, annot=True, fmt='.2f', linewidth=1, cmap=cmap);
     """
+    stops = _corr_thr_stops(threshold, vmin)
+    cmap = LinearSegmentedColormap.from_list("custom", stops)
+    return cmap
+
+
+def _corr_thr_stops(threshold=0.8, vmin=-1):
+    """
+    Get the colormap stops used to plot correlations with a ``threshold``.
+
+    The stops are shared by the matplotlib colormap and by the plotly
+    colorscale, so that both engines colour a correlation heatmap identically.
+
+    Parameters
+    ----------
+    threshold : float, default: 0.8
+        Level for colouring the correlation. Must be in (0, 1)
+    vmin : int, default: -1
+        Minimum value of correlations. Must be in -1 or 0.
+
+    Returns
+    -------
+    stops : list[tuple[float, str]]
+        List of ``(position, color)`` pairs, where the position is in [0, 1]
+
+    Raises
+    ------
+    ValueError
+        If ``threshold`` is not in (0, 1) or ``vmin`` is neither -1 nor 0
+
+    Examples
+    --------
+    >>> from pltstat.cm import _corr_thr_stops
+    >>> _corr_thr_stops(threshold=0.8, vmin=0)
+    [(0, 'White'), (0.8, 'White'), (1, 'Red')]
+    """
     if (threshold > 1) or (threshold < 0):
         raise ValueError("thresholds must be from 0 to 1")
 
@@ -90,14 +127,14 @@ def get_corr_thr_cmap(threshold=0.8, vmin=-1):
     if vmin == -1:
         threshold = 1 - threshold
         threshold = threshold / 2
-        cmap = [
+        stops = [
             (0, blue),
             (threshold, white),
             (1 - threshold, white),
             (1, red),
         ]
     elif vmin == 0:
-        cmap = [
+        stops = [
             (0, white),
             (threshold, white),
             (1, red),
@@ -105,5 +142,158 @@ def get_corr_thr_cmap(threshold=0.8, vmin=-1):
     else:
         raise ValueError("'vmin' must be -1 or 0")
 
-    cmap = LinearSegmentedColormap.from_list("custom", cmap)
-    return cmap
+    return stops
+
+
+def get_corr_thr_colorscale(threshold=0.8, vmin=-1):
+    """
+    Get Blue-Red plotly colorscale for plot correlations with ``|threshold|``
+
+    This is the plotly counterpart of :func:`get_corr_thr_cmap`. Both build the
+    colours from the same stops, so a correlation heatmap looks the same with
+    either engine.
+
+    Parameters
+    ----------
+    threshold : float, default: 0.8
+        Level for colouring the correlation. Must be in (0, 1)
+    vmin : int, default: -1
+        Minimum value of correlations. Must be in -1 or 0.
+
+    Returns
+    -------
+    colorscale : list[list]
+        Plotly colorscale as a list of ``[position, color]`` pairs, where the
+        position is in [0, 1] and the colour is a hexadecimal string
+
+    Raises
+    ------
+    ValueError
+        If ``threshold`` is not in (0, 1) or ``vmin`` is neither -1 nor 0
+
+    Examples
+    --------
+    >>> from pltstat.cm import get_corr_thr_colorscale
+    >>> get_corr_thr_colorscale(threshold=0.8, vmin=0)
+    [[0, '#ffffff'], [0.8, '#ffffff'], [1, '#ff0000']]
+    """
+    stops = _corr_thr_stops(threshold, vmin)
+    return [[position, to_hex(color)] for position, color in stops]
+
+
+def get_pval_thr_colorscale(alpha=0.05, color_signif="palegreen", color_non_signif="lightcoral"):
+    """
+    Get Red-Green plotly colorscale for p-values with ``alpha`` threshold
+
+    This is the plotly counterpart of :func:`get_pval_legend_thr_cmap`. The
+    colour changes abruptly at ``alpha`` instead of blending, which reproduces
+    the discrete matplotlib colormap.
+
+    Parameters
+    ----------
+    alpha : float, default: 0.05
+        Significance level. Must be in (0, 1)
+    color_signif : str, default: "palegreen"
+        Color of the cells with p-value less than ``alpha`` (significant)
+    color_non_signif : str, default: "lightcoral"
+        Color of the cells with p-value greater or equal to ``alpha``
+        (not significant)
+
+    Returns
+    -------
+    colorscale : list[list]
+        Plotly colorscale as a list of ``[position, color]`` pairs. The colour
+        at ``alpha`` is repeated to make the transition sharp.
+
+    Notes
+    -----
+    The heatmap must be drawn with ``zmin=0`` and ``zmax=1`` for the threshold
+    to fall at ``alpha``.
+
+    Examples
+    --------
+    >>> from pltstat.cm import get_pval_thr_colorscale
+    >>> get_pval_thr_colorscale(alpha=0.05)
+    [[0.0, '#98fb98'], [0.05, '#98fb98'], [0.05, '#f08080'], [1.0, '#f08080']]
+    """
+    signif = to_hex(color_signif)
+    non_signif = to_hex(color_non_signif)
+    return [
+        [0.0, signif],
+        [alpha, signif],
+        [alpha, non_signif],
+        [1.0, non_signif],
+    ]
+
+
+def get_palette_hex(palette="muted", n_colors=None):
+    """
+    Get a seaborn palette as a list of hexadecimal colours for plotly.
+
+    Parameters
+    ----------
+    palette : str, default: "muted"
+        Name of the seaborn palette, for example "muted" or "pastel"
+    n_colors : int or None, default: None
+        Number of colours to return. None returns the whole palette.
+
+    Returns
+    -------
+    colors : list[str]
+        List of colours as hexadecimal strings
+
+    Notes
+    -----
+    Resolving the palette through seaborn keeps the colours of a plot the same
+    with either engine.
+
+    Examples
+    --------
+    >>> from pltstat.cm import get_palette_hex
+    >>> get_palette_hex("muted", 2)
+    ['#4878d0', '#ee854a']
+    """
+    return sns.color_palette(palette, n_colors).as_hex()
+
+
+def format_matrix(values, fmt=".2f"):
+    """
+    Render the values of a matrix as the strings annotating a plotly heatmap.
+
+    Parameters
+    ----------
+    values : array-like
+        Matrix of numbers to render.
+    fmt : str, default: ".2f"
+        Format specification of a single value, as used by ``sns.heatmap``.
+
+    Returns
+    -------
+    text : list[list[str]]
+        Rendered values, with an empty string in place of a missing value.
+
+    Notes
+    -----
+    Seaborn accepts the format with a leading dot, while :func:`format` does
+    not, so the leading dot is removed before formatting.
+
+    Examples
+    --------
+    >>> from pltstat.cm import format_matrix
+    >>> format_matrix([[0.5, None]], fmt=".1f")
+    [['0.5', '']]
+    """
+    spec = fmt.lstrip(".") if fmt.startswith(".") else fmt
+    spec = "." + spec if fmt.startswith(".") else spec
+
+    text = []
+    for row in values:
+        rendered = []
+        for value in row:
+            if value is None or (isinstance(value, float) and value != value):
+                rendered.append("")
+            else:
+                rendered.append(format(value, spec))
+        text.append(rendered)
+
+    return text
