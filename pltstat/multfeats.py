@@ -7,7 +7,6 @@ including Spearman's correlation, Mann-Whitney p-values, and Phik correlations.
 """
 
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
 
 import seaborn as sns
 

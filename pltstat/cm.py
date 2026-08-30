@@ -3,7 +3,7 @@ Contains custom colormap utilities for visualizations, such as rendering correla
 or creating two-colored maps for p-values with a threshold (e.g., alpha).
 """
 
-from matplotlib.colors import BoundaryNorm, ListedColormap
+from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap, ListedColormap
 
 
 def get_pval_legend_thr_cmap(alpha=0.05, color_signif="palegreen", color_non_signif="lightcoral"):
