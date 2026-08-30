@@ -625,6 +625,464 @@ def _corr_plotly(spec, show_means=True, show_regression=True, figsize=(8, 6), **
     return fig
 
 
+@dataclass(frozen=True)
+class _BoxplotSpec:
+    """
+    Plot-ready data of a boxplot grouped by a categorical feature.
+
+    Attributes
+    ----------
+    df : pd.DataFrame
+        Observations of the two features, without the missing values and with
+        the categorical feature cast to str.
+    cat_feat : str
+        Name of the categorical feature.
+    num_feat : str
+        Name of the numerical feature.
+    cat_order : np.ndarray
+        Categories in the order they are drawn.
+    counts : pd.Series
+        Number of observations of every category, aligned with ``cat_order``.
+    p_value : float
+        p-value of the test comparing the categories.
+    test_type : str
+        Name of the test which produced ``p_value``.
+    title : str
+        Rendered title with the name of the test and its p-value.
+    color : str
+        Colour of the title, "g" when the p-value is significant else "r".
+    height : float
+        Height of the figure in inches, derived from the number of categories.
+    is_empty : bool
+        True when the two features have no common non missing observation.
+    """
+
+    df: object
+    cat_feat: str
+    num_feat: str
+    cat_order: object
+    counts: object
+    p_value: float
+    test_type: str
+    title: str
+    color: str
+    height: float
+    is_empty: bool
+
+
+def _boxplot_spec(df, cat_feat, num_feat, size="compact", cat_order=None, alpha=0.05):
+    """
+    Compute the plot-ready data of a boxplot grouped by a categorical feature.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame containing the two features.
+    cat_feat : str
+        Name of the categorical feature to group by.
+    num_feat : str
+        Name of the numerical feature to plot.
+    size : {"tiny", "compact", "normal", "huge"}, default: "compact"
+        Size of the figure, which sets the height per category.
+    cat_order : list or None, default: None
+        Desired order of the categories. If None, they are sorted.
+    alpha : float, default: 0.05
+        Significance level used to colour the title.
+
+    Returns
+    -------
+    spec : _BoxplotSpec
+        Observations, order, counts and test of the two features.
+
+    Raises
+    ------
+    ValueError
+        If `size` is unknown, or if the categorical feature has an unusable
+        number of unique values.
+
+    Notes
+    -----
+    The Mann-Whitney U-test is used for two categories and the Kruskal-Wallis
+    H-test for more, so both engines report the same p-value.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pltstat.twofeats import _boxplot_spec
+    >>> data = pd.DataFrame({"g": ["a", "a", "b", "b"], "v": [1.0, 2.0, 5.0, 6.0]})
+    >>> _boxplot_spec(data, "g", "v").test_type
+    'Mann-Whitney U-test'
+    """
+    try:
+        coef = {
+            "tiny": 2.5,
+            "compact": 2,
+            "normal": 1.5,
+            "huge": 1,
+        }[size]
+    except KeyError:
+        raise ValueError(
+            f"Value of size must be 'tiny', 'compact', 'normal', or 'huge' but given: {size}"
+        )
+
+    df = df[[cat_feat, num_feat]].dropna()
+    if df.shape[0] == 0:
+        return _BoxplotSpec(
+            df=df,
+            cat_feat=cat_feat,
+            num_feat=num_feat,
+            cat_order=np.array([]),
+            counts=None,
+            p_value=float("nan"),
+            test_type="",
+            title="",
+            color="k",
+            height=0.0,
+            is_empty=True,
+        )
+
+    df[cat_feat] = df[cat_feat].astype("str")
+    if cat_order is not None:
+        cat_order = np.array(cat_order).astype("str")
+        cat_order = cat_order[np.isin(cat_order, df[cat_feat].unique())]
+    else:
+        cat_order = df[cat_feat].astype("str").unique()
+        cat_order = np.sort(cat_order)
+
+    n_cat_feat = len(df[cat_feat].unique())
+    n_cat_feat_tr1 = 2
+    n_cat_feat_tr2 = 16
+
+    if n_cat_feat == n_cat_feat_tr1:
+        p = mannwhitneyu_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)[1]
+        test_type = "Mann-Whitney U-test"
+    elif (n_cat_feat > n_cat_feat_tr1) and (n_cat_feat <= n_cat_feat_tr2):
+        p = kruskal_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)[1]
+        test_type = "Kruskal-Wallis H-test"
+    elif n_cat_feat > n_cat_feat_tr2:
+        raise ValueError(
+            f"Too many unique values of categorical feature '{cat_feat}': {n_cat_feat}"
+        )
+    else:
+        raise ValueError(
+            f"The categorical feature '{cat_feat}' has {n_cat_feat} unique value(s), which seems unusual for this function."
+        )
+
+    counts = df.groupby(cat_feat, observed=False)[num_feat].count().loc[cat_order]
+
+    return _BoxplotSpec(
+        df=df,
+        cat_feat=cat_feat,
+        num_feat=num_feat,
+        cat_order=cat_order,
+        counts=counts,
+        p_value=p,
+        test_type=test_type,
+        title=f"{test_type} p-value={p:.3f}",
+        color="g" if p <= alpha else "r",
+        height=n_cat_feat / coef,
+        is_empty=False,
+    )
+
+
+def _boxplot_mpl(spec, fig_return=False, ax=None, palette="pastel", **kwargs):
+    """
+    Draw a boxplot grouped by a categorical feature with matplotlib.
+
+    Parameters
+    ----------
+    spec : _BoxplotSpec
+        Plot-ready data built by :func:`_boxplot_spec`.
+    fig_return : bool, default: False
+        If True, the Axes drawn by seaborn is returned.
+    ax : matplotlib.axes.Axes or None, default: None
+        Axes to draw on. If None, a new figure and Axes are created.
+    palette : str or list, default: "pastel"
+        Colour palette of the boxes.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``sns.boxplot()``.
+
+    Returns
+    -------
+    fig : matplotlib.axes.Axes or None
+        The Axes drawn by seaborn when ``fig_return`` is True, else None.
+    """
+    df = spec.df
+    cat_feat = spec.cat_feat
+    num_feat = spec.num_feat
+    cat_order = spec.cat_order
+
+    if ax is None:
+        h_size = spec.height  # _np.ceil(n_cat_feat / coef)
+        w_size = 18
+        fig, ax = plt.subplots(1, 1, figsize=(w_size, h_size))
+
+    fig = sns.boxplot(
+        data=df,
+        x=num_feat,
+        y=cat_feat,
+        hue=cat_feat,
+        legend=False,
+        orient="h",
+        fliersize=1,
+        showmeans=True,
+        order=cat_order,
+        hue_order=cat_order,
+        ax=ax,
+        palette=palette,
+        meanprops={
+            "marker": "o",
+            "markerfacecolor": "white",
+            "markeredgecolor": "black",
+        },  # "markersize": "10"
+        **kwargs,
+    )
+
+    ax.set_title(spec.title, color=spec.color)
+
+    counts = spec.counts
+    xmin, xmax, ymin, ymax = ax.axis()
+    x = (xmin + xmax) / 2
+    for y, val in enumerate(counts):
+        if val < 30:
+            color = "r"
+        else:
+            color = "k"
+        ax.text(x, y, "count=" + str(val), color=color, fontweight="bold")
+
+    if fig_return:
+        return fig
+
+
+def _boxplot_traces(spec, palette="pastel", **kwargs):
+    """
+    Build the plotly traces of a boxplot grouped by a categorical feature.
+
+    Parameters
+    ----------
+    spec : _BoxplotSpec
+        Plot-ready data built by :func:`_boxplot_spec`.
+    palette : str or list, default: "pastel"
+        Colour palette of the boxes.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Box``.
+
+    Returns
+    -------
+    traces : list
+        One ``plotly.graph_objects.Box`` per category, so that every category
+        gets its own colour as seaborn does.
+
+    Notes
+    -----
+    The traces are built apart from the figure, so that :func:`dis_box_plot`
+    can add them to a subplot without drawing a figure of its own.
+    """
+    go, _ = _import_plotly()
+
+    colors = cm.get_palette_hex(palette, len(spec.cat_order))
+    traces = []
+    for category, color in zip(spec.cat_order, colors):
+        values = spec.df.loc[spec.df[spec.cat_feat] == category, spec.num_feat]
+        traces.append(
+            go.Box(
+                x=values,
+                name=str(category),
+                orientation="h",
+                boxmean=True,
+                marker={"size": 1, "color": color},
+                fillcolor=color,
+                line={"color": "black", "width": 1},
+                showlegend=False,
+                **kwargs,
+            )
+        )
+
+    return traces
+
+
+def _boxplot_plotly(spec, palette="pastel", figsize=None, **kwargs):
+    """
+    Draw a boxplot grouped by a categorical feature with plotly.
+
+    Parameters
+    ----------
+    spec : _BoxplotSpec
+        Plot-ready data built by :func:`_boxplot_spec`.
+    palette : str or list, default: "pastel"
+        Colour palette of the boxes.
+    figsize : tuple or None, default: None
+        Size of the figure in inches, converted to pixels. If None, the height
+        is derived from the number of categories as with matplotlib.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Box``.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The boxplot.
+    """
+    go, _ = _import_plotly()
+
+    if figsize is None:
+        figsize = (18, spec.height)
+    width, height = _figsize_to_px(figsize)
+
+    fig = go.Figure(_boxplot_traces(spec, palette=palette, **kwargs))
+    _add_boxplot_counts(fig, spec)
+
+    fig.update_layout(
+        title={"text": spec.title, "font": {"color": _to_plotly_color(spec.color)}},
+        width=width,
+        height=height,
+        xaxis_title=spec.num_feat,
+        yaxis_title=spec.cat_feat,
+        # Plotly draws the first category at the bottom, seaborn at the top
+        yaxis={"categoryorder": "array", "categoryarray": list(spec.cat_order)[::-1]},
+    )
+
+    return fig
+
+
+def _add_boxplot_counts(fig, spec, row=None, col=None):
+    """
+    Annotate every box of a plotly figure with the count of its category.
+
+    Parameters
+    ----------
+    fig : plotly.graph_objects.Figure
+        Figure holding the boxes.
+    spec : _BoxplotSpec
+        Plot-ready data built by :func:`_boxplot_spec`.
+    row : int or None, default: None
+        Row of the subplot to annotate, or None for a plain figure.
+    col : int or None, default: None
+        Column of the subplot to annotate, or None for a plain figure.
+
+    Returns
+    -------
+    None
+        The function annotates the figure and does not return any value.
+
+    Notes
+    -----
+    A count below 30 is written in red, as with matplotlib.
+    """
+    values = spec.df[spec.num_feat]
+    x = (values.min() + values.max()) / 2
+
+    for category, count in zip(spec.cat_order, spec.counts):
+        annotation = {
+            "x": x,
+            "y": str(category),
+            "text": "count=" + str(count),
+            "showarrow": False,
+            "font": {"color": "red" if count < 30 else "black"},
+        }
+        if row is None:
+            fig.add_annotation(**annotation)
+        else:
+            fig.add_annotation(row=row, col=col, **annotation)
+
+
+def _dis_box_plot_plotly(spec, stat="count", figsize=(20, 3.5), palette="pastel", **kwargs):
+    """
+    Draw a boxplot above a histogram of the same feature with plotly.
+
+    Parameters
+    ----------
+    spec : _BoxplotSpec
+        Plot-ready data built by :func:`_boxplot_spec`.
+    stat : str, default: "count"
+        Aggregate of the histogram, "count", "probability" or "density".
+    figsize : tuple, default: (20, 3.5)
+        Size of the figure in inches, converted to pixels.
+    palette : str or list, default: "pastel"
+        Colour palette shared by the boxes and the histogram.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Histogram``.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The boxplot and the histogram, stacked in one figure.
+
+    Notes
+    -----
+    The two rows keep the height ratio of one to two used by matplotlib, and
+    the categories share one colour in both rows.
+    """
+    go, make_subplots = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        # Matplotlib takes the ratio [1, 2], plotly takes the fractions
+        row_heights=[1 / 3, 2 / 3],
+        shared_xaxes=True,
+        vertical_spacing=0.12,
+    )
+
+    for trace in _boxplot_traces(spec, palette=palette):
+        fig.add_trace(trace, row=1, col=1)
+    _add_boxplot_counts(fig, spec, row=1, col=1)
+
+    colors = cm.get_palette_hex(palette, len(spec.cat_order))
+    values = spec.df[spec.num_feat]
+    bin_edges = np.histogram_bin_edges(values, bins="auto")
+    bin_size = bin_edges[1] - bin_edges[0] if len(bin_edges) > 1 else None
+
+    for category, color in zip(spec.cat_order, colors):
+        group = spec.df.loc[spec.df[spec.cat_feat] == category, spec.num_feat]
+        fig.add_trace(
+            go.Histogram(
+                x=group,
+                name=str(category),
+                marker_color=color,
+                opacity=0.75,
+                histnorm="probability" if stat == "probability" else None,
+                xbins={"start": bin_edges[0], "end": bin_edges[-1], "size": bin_size},
+                legendgroup=str(category),
+                **kwargs,
+            ),
+            row=2,
+            col=1,
+        )
+
+        if np.unique(group).size > 1:
+            # Seaborn normalizes the density of every category on its own
+            scale = len(group) * bin_size if stat == "count" else 1.0
+            grid, density = kde_curve(group, scale=scale)
+            fig.add_trace(
+                go.Scatter(
+                    x=grid,
+                    y=density,
+                    mode="lines",
+                    line={"color": color},
+                    legendgroup=str(category),
+                    showlegend=False,
+                    hoverinfo="skip",
+                ),
+                row=2,
+                col=1,
+            )
+
+    fig.update_layout(
+        title={
+            "text": f"{spec.num_feat}<br>{spec.title}",
+            "font": {"color": _to_plotly_color(spec.color)},
+        },
+        width=width,
+        height=height,
+        barmode="overlay",
+        yaxis={"categoryorder": "array", "categoryarray": list(spec.cat_order)[::-1]},
+    )
+    fig.update_xaxes(title_text=spec.num_feat, row=2, col=1)
+    fig.update_yaxes(title_text=stat, row=2, col=1)
+
+    return fig
+
 # --- Public plotting functions ---
 
 
@@ -830,6 +1288,8 @@ def boxplot(
     alpha=0.05,
     ax=None,
     palette="pastel",
+    figsize=None,
+    engine=None,
     **kwargs,
 ):
     """
@@ -867,7 +1327,7 @@ def boxplot(
     Notes
     -----
     The function computes a statistical test based on the number of unique values in the categorical feature:
-    - If there are exactly 2 categories, the Mann–Whitney U-test is applied.
+    - If there are exactly 2 categories, the Mann-Whitney U-test is applied.
     - If there are between 3 and 16 categories, the Kruskal-Wallis H-test is applied.
     The p-value from the test is displayed in the plot title. The color of the title will be green for a p-value
     less than `alpha` and red otherwise.
@@ -895,103 +1355,22 @@ def boxplot(
     >>> # Create the boxplot
     >>> boxplot(df, cat_feat='category', num_feat='value', size='normal', alpha=0.05)
     """
-    try:
-        coef = {
-            "tiny": 2.5,
-            "compact": 2,
-            "normal": 1.5,
-            "huge": 1,
-        }[size]
-    except KeyError:
-        raise ValueError(
-            f"Value of size must be 'tiny', 'compact', 'normal', or 'huge' but given: {size}"
-        )
-
-    df = df[[cat_feat, num_feat]].dropna()
-    if df.shape[0] == 0:
-        print(f"Number of dataframe rows for columns {cat_feat} and {num_feat} is zero")
-        return
-
-    df[cat_feat] = df[cat_feat].astype("str")
-    if cat_order is not None:
-        cat_order = np.array(cat_order).astype("str")
-        cat_order = cat_order[np.isin(cat_order, df[cat_feat].unique())]
-    else:
-        cat_order = df[cat_feat].astype("str").unique()
-        cat_order = np.sort(cat_order)
-
-    n_cat_feat = len(df[cat_feat].unique())
-    n_cat_feat_tr1 = 2
-    n_cat_feat_tr2 = 16
-
-    if n_cat_feat == n_cat_feat_tr1:
-        p = mannwhitneyu_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)[1]
-    elif (n_cat_feat > n_cat_feat_tr1) and (n_cat_feat <= n_cat_feat_tr2):
-        p = kruskal_by_cat(df, cat_feat=cat_feat, num_feat=num_feat)[1]
-    elif n_cat_feat > n_cat_feat_tr2:
-        raise ValueError(
-            f"Too many unique values of categorical feature '{cat_feat}': {n_cat_feat}"
-        )
-    else:
-        raise ValueError(
-            f"The categorical feature '{cat_feat}' has {n_cat_feat} unique value(s), which seems unusual for this function."
-        )
-
-    if ax is None:
-        h_size = n_cat_feat / coef  # _np.ceil(n_cat_feat / coef)
-        w_size = 18
-        fig, ax = plt.subplots(1, 1, figsize=(w_size, h_size))
-
-    fig = sns.boxplot(
-        data=df,
-        x=num_feat,
-        y=cat_feat,
-        hue=cat_feat,
-        legend=False,
-        orient="h",
-        fliersize=1,
-        showmeans=True,
-        order=cat_order,
-        hue_order=cat_order,
-        ax=ax,
-        palette=palette,
-        meanprops={
-            "marker": "o",
-            "markerfacecolor": "white",
-            "markeredgecolor": "black",
-        },  # "markersize": "10"
-        **kwargs,
+    engine = _resolve_engine(engine)
+    spec = _boxplot_spec(
+        df, cat_feat, num_feat, size=size, cat_order=cat_order, alpha=alpha
     )
 
-    if cat_order is None:
-        cat_order = fig.axes.get_yticklabels()
-        cat_order = [plt_text.get_text() for plt_text in cat_order]
-        dtype = df[cat_feat].dtype
-        cat_order = np.array(cat_order).astype(dtype)
+    if spec.is_empty:
+        print(f"Number of dataframe rows for columns {cat_feat} and {num_feat} is zero")
+        return None
 
-    # if n_cat_feat == 2:
-    if p <= alpha:
-        color = "g"
-    else:
-        color = "r"
-    if n_cat_feat == 2:
-        test_type = "Mann–Whitney U-test"
-    else:
-        test_type = "Kruskal-Wallis H-test"
-    ax.set_title(f"{test_type} p-value={p:.3f}", color=color)
+    if engine == "matplotlib":
+        return _boxplot_mpl(
+            spec, fig_return=fig_return, ax=ax, palette=palette, **kwargs
+        )
 
-    counts = df.groupby(cat_feat, observed=False)[num_feat].count().loc[cat_order]
-    xmin, xmax, ymin, ymax = ax.axis()
-    x = (xmin + xmax) / 2
-    for y, val in enumerate(counts):
-        if val < 30:
-            color = "r"
-        else:
-            color = "k"
-        ax.text(x, y, "count=" + str(val), color=color, fontweight="bold")
-
-    if fig_return:
-        return fig
+    _warn_ignored_mpl_params(engine, ax=ax, fig_return=fig_return)
+    return _boxplot_plotly(spec, palette=palette, figsize=figsize, **kwargs)
 
 
 def dis_box_plot(
@@ -1004,6 +1383,7 @@ def dis_box_plot(
     palette="pastel",
     alpha=0.05,
     ax_return=False,
+    engine=None,
 ):
     """
     Plot a boxplot and a displot for a numeric feature (`num_feat`) of a DataFrame,
@@ -1065,41 +1445,29 @@ def dis_box_plot(
     >>> dis_box_plot(df, cat_feat='target', num_feat='value')
     """
 
-    df_subset = df[[cat_feat, num_feat]].dropna()
-    if df_subset.shape[0] == 0:
+    engine = _resolve_engine(engine)
+    spec = _boxplot_spec(df, cat_feat, num_feat, cat_order=cat_order, alpha=alpha)
+
+    if spec.is_empty:
         print(f"Number of dataframe rows for columns {cat_feat} and {num_feat} is zero")
-        return
+        return None
 
-    df_subset[cat_feat] = df_subset[cat_feat].astype("str")
-
-    if cat_order is not None:
-        cat_order = np.array(cat_order).astype("str")
-        cat_order = cat_order[np.isin(cat_order, df_subset[cat_feat].unique())]
-    else:
-        cat_order = df_subset[cat_feat].astype("str").unique()
-        cat_order = np.sort(cat_order)
+    if engine == "plotly":
+        _warn_ignored_mpl_params(engine, ax_return=ax_return)
+        return _dis_box_plot_plotly(spec, stat=stat, figsize=figsize, palette=palette)
 
     _, ax = plt.subplots(2, 1, figsize=figsize, gridspec_kw={"height_ratios": [1, 2]})
-    fig = boxplot(
-        df_subset,
-        cat_feat,
-        num_feat,
-        fig_return=True,
-        cat_order=cat_order,
-        ax=ax[0],
-        palette=palette,
-        alpha=alpha,
-    )
+    fig = _boxplot_mpl(spec, fig_return=True, ax=ax[0], palette=palette)
 
     title = fig.axes.get_title()
     ax[0].set_title(f"{num_feat}\n{title}")
 
     sns.histplot(
-        data=df_subset,
+        data=spec.df,
         x=num_feat,
         hue=cat_feat,
         kde=True,
-        hue_order=cat_order,
+        hue_order=spec.cat_order,
         stat=stat,
         common_norm=False,
         ax=ax[1],
@@ -1107,3 +1475,5 @@ def dis_box_plot(
     )
     if ax_return is True:
         return ax
+
+    return None
