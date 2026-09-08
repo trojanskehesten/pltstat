@@ -71,23 +71,28 @@ class TestTwoFeats:
     def test_crosstab(self, df, engine):
         assert_rendered(tf.crosstab(df, "cat1", "cat2", engine=engine), engine)
 
-    def test_crosstab_absolute_panel_only(self, df, engine):
-        """A single panel is selected by passing None, not False.
-
-        The branches in ``_crosstab_mpl`` and ``_crosstab_plotly`` test
-        ``is_abs is None`` / ``is_norm is None``, so False raises instead of
-        dropping a panel. The test pins the behaviour that actually works.
-        """
-        result = tf.crosstab(df, "cat1", "cat2", is_norm=None, engine=engine)
+    @pytest.mark.parametrize("is_norm", [False, None])
+    def test_crosstab_absolute_panel_only(self, df, engine, is_norm):
+        """Switching off the normalized panel leaves the absolute one."""
+        result = tf.crosstab(df, "cat1", "cat2", is_norm=is_norm, engine=engine)
         assert_rendered(result, engine)
 
-    def test_crosstab_normalized_panel_only(self, df, engine):
-        result = tf.crosstab(df, "cat1", "cat2", is_abs=None, engine=engine)
+    @pytest.mark.parametrize("is_abs", [False, None])
+    def test_crosstab_normalized_panel_only(self, df, engine, is_abs):
+        """Switching off the absolute panel leaves the normalized one."""
+        result = tf.crosstab(df, "cat1", "cat2", is_abs=is_abs, engine=engine)
         assert_rendered(result, engine)
 
     def test_crosstab_without_any_panel_raises(self, df, engine):
+        with pytest.raises(ValueError, match="At least one of"):
+            tf.crosstab(df, "cat1", "cat2", is_abs=False, is_norm=False, engine=engine)
+
+    def test_crosstab_without_any_panel_creates_no_figure(self, df, engine):
+        """The call is rejected before a figure is built."""
+        plt.close("all")
         with pytest.raises(ValueError):
             tf.crosstab(df, "cat1", "cat2", is_abs=False, is_norm=False, engine=engine)
+        assert not plt.get_fignums()
 
     @pytest.mark.parametrize("method", ["fisher", "chi2"])
     def test_crosstab_explicit_method(self, df, engine, method):

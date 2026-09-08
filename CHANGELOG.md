@@ -35,6 +35,11 @@ All notable changes to this project will be documented in this file.
   from 2.1 on, which made the package impossible to install on Python 3.13.
 
 ### Fixed
+- `twofeats.crosstab` rejected `is_abs=False` and `is_norm=False` with a
+  `ValueError` instead of dropping the corresponding panel, and drawing a
+  single panel worked only by passing None, which selected the opposite panel
+  to the one the parameter names. Both flags are now plain booleans, as the
+  documentation always described them.
 - `pltstat/tests.py`, a local scratch file, was included in the published
   distribution and installed together with the package. It now lives in
   `pltstat/sandbox/`, which is not part of the package.

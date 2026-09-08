@@ -324,6 +324,9 @@ def _crosstab_mpl(spec, title=None, color_title=None, is_abs=True, is_norm=True,
             **kwargs,
         )
 
+    if not (is_abs or is_norm):
+        raise ValueError("At least one of `is_abs` or `is_norm` must be True")
+
     # Plot Heatmaps and calculate statistics:
     if is_abs and is_norm:
         figsize = figsize or (10, 3)
@@ -335,12 +338,10 @@ def _crosstab_mpl(spec, title=None, color_title=None, is_abs=True, is_norm=True,
         figsize = figsize or (5, 3)
         fig, ax = plt.subplots(1, 1, figsize=figsize)
 
-        if is_abs is None:
+        if is_abs:
             plot_crosstab_abs(ax_count=ax)
-        elif is_norm is None:
-            plot_crosstab_norm(ax_norm=ax)
         else:
-            raise ValueError("Not less that one of is_abs or is_norm must be True")
+            plot_crosstab_norm(ax_norm=ax)
 
 
 def _corr_mpl(spec, ax=None, show_means=True, show_regression=True, **kwargs):
@@ -471,6 +472,9 @@ def _crosstab_plotly(spec, title=None, color_title=None, is_abs=True, is_norm=Tr
     """
     go, make_subplots = _import_plotly()
 
+    if not (is_abs or is_norm):
+        raise ValueError("At least one of `is_abs` or `is_norm` must be True")
+
     if is_abs and is_norm:
         figsize = figsize or (10, 3)
     else:
@@ -498,14 +502,12 @@ def _crosstab_plotly(spec, title=None, color_title=None, is_abs=True, is_norm=Tr
         colors = [color_abs, color_norm]
         panels = [(spec.crosstab_abs, ".0f", None, None, False),
                   (spec.crosstab_norm, ".2f", 0, 1, True)]
-    elif is_abs is None:
+    elif is_abs:
         titles, colors = [title_abs], [color_abs]
         panels = [(spec.crosstab_abs, ".0f", None, None, True)]
-    elif is_norm is None:
+    else:
         titles, colors = [title_norm], [color_norm]
         panels = [(spec.crosstab_norm, ".2f", 0, 1, True)]
-    else:
-        raise ValueError("Not less that one of is_abs or is_norm must be True")
 
     fig = make_subplots(rows=1, cols=len(panels), subplot_titles=titles)
 
@@ -1147,9 +1149,16 @@ def crosstab(
         The figure when ``engine="plotly"``. With matplotlib the function
         creates and displays the plots and returns None.
 
+    Raises
+    ------
+    ValueError
+        If both `is_abs` and `is_norm` are False, because there is then
+        nothing to draw.
+
     Notes
     -----
     - If both `is_abs` and `is_norm` are True, two plots are displayed: absolute values and normalized values.
+    - If only one of them is True, only that plot is displayed.
     - The name of the chi-squared test uses the mathtext markup of matplotlib,
       which plotly does not render, so the plotly title shows "chi2".
     - The function can automatically detect and apply the appropriate statistical test (Chi-square or Fisher's exact test).
