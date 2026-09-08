@@ -5,6 +5,9 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  # Lets the matrix be started by hand on any branch, before a pull request
+  # is opened.
+  workflow_dispatch:
 
 env:
   # Keep matplotlib headless on the runners; `tests/conftest.py` also selects
@@ -13,8 +16,9 @@ env:
   # numba, pulled in by umap-learn, caches its compiled kernels next to the
   # installed package by default, which fails when that directory is missing
   # or not writable. A dedicated cache directory keeps the run independent of
-  # how the environment was installed.
-  NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-cache
+  # how the environment was installed. Only the `github` context is available
+  # here, so the path cannot be built from `runner.temp`.
+  NUMBA_CACHE_DIR: ${{ github.workspace }}/.numba-cache
 
 jobs:
   test:
