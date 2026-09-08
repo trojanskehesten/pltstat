@@ -19,5 +19,6 @@ __pycache__/
 tests.py
 
 # Setup results
+build/
 dist/
 pltstat.egg-info/

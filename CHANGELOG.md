@@ -21,8 +21,27 @@ All notable changes to this project will be documented in this file.
 - A `fig_return` parameter on `pvals_num`, `pvals_cat`, `pvals_num_cat` and
   `dist_qq_plot`, which returns the figure next to the data.
 - `plotly` as a dependency.
+- Support for Python 3.10 to 3.14. The package previously declared Python 3.12
+  only.
+- A test suite under `tests/`, which exercises every public function on both
+  engines. Install it with `pip install -e ".[test]"` and run it with `pytest`.
+- A continuous integration workflow which runs the suite on every supported
+  Python version, on Linux, Windows and macOS, and on the lowest dependency
+  versions the package declares.
+
+### Changed
+- Dependency bounds are now a floor and a major version cap instead of
+  compatible release pins. The previous `numpy~=2.0.2` excluded every numpy
+  from 2.1 on, which made the package impossible to install on Python 3.13.
 
 ### Fixed
+- `pltstat/tests.py`, a local scratch file, was included in the published
+  distribution and installed together with the package. It now lives in
+  `pltstat/sandbox/`, which is not part of the package.
+- The two examples in the docstring of `stat_methods.cramer_v` reported values
+  which the function does not return.
+- The Getting Started section of the README still asked for an installation of
+  R, a requirement dropped in 0.10.0.
 - `cm.get_corr_thr_cmap` raised a `NameError` because
   `LinearSegmentedColormap` was not imported, which broke `phik_corrs` and
   `heatmap_corr` with a threshold.
