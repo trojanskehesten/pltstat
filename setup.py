@@ -57,18 +57,23 @@ setup(
     packages=["pltstat"],
     # packages=find_packages(),
     install_requires=load_requirements(),
-    python_requires="~=3.12",
+    extras_require={"test": ["pytest>=8"]},
+    python_requires=">=3.10",
     include_package_data=True,  # Reading Manifest.in
 
-    keywords = "matplotlib, statistics, visualization, dataanalysis",
+    keywords = "matplotlib, plotly, statistics, visualization, dataanalysis",
 
     classifiers=[
         "Development Status :: 4 - Beta",  # "5 - Production/Stable"
         "Intended Audience :: Science/Research",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: BSD License",
-        "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering :: Visualization",
         "Topic :: Scientific/Engineering :: Mathematics",

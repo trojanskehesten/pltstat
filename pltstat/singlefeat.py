@@ -3,21 +3,633 @@ Dedicated to the analysis and visualization of single-variable features,
 including plotting functions such as pie charts, count plots, and histograms.
 """
 
+from dataclasses import dataclass
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+
+from . import cm
+from .config import _figsize_to_px, _import_plotly, _resolve_engine, _warn_ignored_mpl_params
+from .stat_methods import kde_curve
 
 THRESHOLD_MANY_CATS = 20  # If categories more than 20 and numbers - group small categories to "Other" group
 THRESHOLD_BIG_CAT = 5  # If categories more than 5 - too many categories, don't plot pie plot
 
 
-def pie(df_column, ax=None, figsize=None, is_count_order=True, **kwargs):
+# --- Specs: plot-ready data shared by both engines ---
+
+
+@dataclass(frozen=True)
+class _PieSpec:
+    """
+    Plot-ready data of a pie chart.
+
+    Attributes
+    ----------
+    categories : list
+        Names of the slices, in the order they are drawn.
+    values : list[int]
+        Absolute count of every slice, aligned with ``categories``.
+    labels : list[str]
+        Rendered labels of the slices, such as "12.5% (3)".
+    title : str or None
+        Title of the chart, taken from the name of the Series.
+    """
+
+    categories: list
+    values: list
+    labels: list
+    title: object
+
+
+@dataclass(frozen=True)
+class _CountplotSpec:
+    """
+    Plot-ready data of a count plot.
+
+    Attributes
+    ----------
+    series : pd.Series
+        Observations of the feature, with the small categories already
+        grouped into the "Other" category.
+    colname : str
+        Name of the plotted feature, used as the label of the x axis.
+    order : list
+        Categories in the order they are drawn.
+    counts : np.ndarray
+        Number of observations of every category, aligned with ``order``.
+    labels : list[str]
+        Rendered labels of the bars.
+    """
+
+    series: object
+    colname: str
+    order: list
+    counts: object
+    labels: list
+
+
+@dataclass(frozen=True)
+class _HistplotSpec:
+    """
+    Plot-ready data of a histogram.
+
+    Attributes
+    ----------
+    series : pd.Series
+        Observations of the feature, as given by the caller.
+    values : np.ndarray
+        Observations of the feature, without the missing values.
+    bin_edges : np.ndarray
+        Edges of the bins, of length ``len(counts) + 1``.
+    counts : np.ndarray
+        Number of observations in every bin.
+    mode : float or None
+        Most frequent value, or None when the mode is not displayed.
+    mode_count : int
+        Number of observations equal to the mode.
+    title : str or None
+        Title of the chart, taken from the name of the Series.
+    """
+
+    series: object
+    values: object
+    bin_edges: object
+    counts: object
+    mode: object
+    mode_count: int
+    title: object
+
+
+def _pie_spec(df_column, is_count_order=True):
+    """
+    Compute the plot-ready data of a pie chart.
+
+    Parameters
+    ----------
+    df_column : pd.Series
+        The pandas Series containing the categorical data to plot.
+    is_count_order : bool, default: True
+        If True, the slices are ordered by the count of occurrences.
+
+    Returns
+    -------
+    spec : _PieSpec
+        Categories, counts and rendered labels of the slices.
+
+    Notes
+    -----
+    The label of every slice is rendered here, so that both engines show the
+    same percentage and the same count even when two categories have the same
+    number of observations.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pltstat.singlefeat import _pie_spec
+    >>> _pie_spec(pd.Series(["A", "B", "B"])).labels
+    ['33.3% (1)', '66.7% (2)']
+    """
+    value_counts = df_column.value_counts()
+
+    if is_count_order is True:
+        value_counts = value_counts.sort_values()
+    else:
+        value_counts = value_counts.sort_index()
+
+    total = int(value_counts.sum())
+    values = [int(value) for value in value_counts.values]
+    labels = [f"{100 * value / total:.1f}% ({value:d})" for value in values]
+
+    return _PieSpec(
+        categories=list(value_counts.index),
+        values=values,
+        labels=labels,
+        title=df_column.name,
+    )
+
+
+def _countplot_spec(df_column, is_count_order=True, is_group_small_cats=True):
+    """
+    Compute the plot-ready data of a count plot.
+
+    Categories which are not among the ``THRESHOLD_MANY_CATS`` most frequent
+    ones are grouped into an "Other" category, which is drawn last.
+
+    Parameters
+    ----------
+    df_column : pd.Series
+        The pandas Series containing the categorical data to plot.
+    is_count_order : bool, default: True
+        If True, the bars are ordered by the count of occurrences.
+    is_group_small_cats : bool, default: True
+        If True, small categories are grouped into an "Other" category.
+
+    Returns
+    -------
+    spec : _CountplotSpec
+        Name, order, counts and rendered labels of the bars.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pltstat.singlefeat import _countplot_spec
+    >>> _countplot_spec(pd.Series(["A", "B", "B"], name="f")).order
+    ['B', 'A']
+    """
+    colname = df_column.name
+    if colname is None:
+        # Rename a copy, so that the Series of the caller is left unchanged
+        colname = "Values"
+        df_column = df_column.rename(colname)
+
+    other_val = "Other"
+    put_other_at_the_end = False
+
+    # Change non-top THRESHOLD_MANY_CATS categories to "Other" group:
+    n_unique = len(df_column.dropna().unique())
+    if (n_unique > THRESHOLD_MANY_CATS) and (is_group_small_cats is True):
+        value_counts = df_column.dropna().value_counts()
+        min_top_count = value_counts.iloc[THRESHOLD_MANY_CATS]  # Count of the 21st category
+
+        # Find categories for Other group:
+        other_mask = value_counts <= min_top_count
+        other_categories = value_counts[other_mask].index
+
+        # Replace small categories to Other group:
+        other_replacer = dict(zip(other_categories, [other_val] * len(other_categories)))
+        df_column = df_column.replace(other_replacer)
+        put_other_at_the_end = True
+
+    if is_count_order:
+        order = df_column.value_counts().index
+    else:
+        order = df_column.unique()
+        order = np.sort(order)
+
+    # Put Other category at the end of the order:
+    if put_other_at_the_end is True:
+        order = order[order != other_val]
+        order = np.append(order, other_val)
+
+    counts = df_column.value_counts().reindex(order, fill_value=0).values
+    total = len(df_column)
+    labels = [f"{100 * count / total:.1f}% \n ({count:.0f})" for count in counts]
+
+    return _CountplotSpec(
+        series=df_column,
+        colname=colname,
+        order=list(order),
+        counts=counts,
+        labels=labels,
+    )
+
+
+def _histplot_spec(df_column, bins="auto", show_mode=False):
+    """
+    Compute the plot-ready data of a histogram.
+
+    Parameters
+    ----------
+    df_column : pd.Series
+        The pandas Series containing the numerical data to plot.
+    bins : int, str or array-like, default: "auto"
+        Binning passed to :func:`numpy.histogram`.
+    show_mode : bool, default: False
+        If True, the mode and its count are computed.
+
+    Returns
+    -------
+    spec : _HistplotSpec
+        Observations, bins, counts and mode of the feature.
+
+    Notes
+    -----
+    The bins are computed here, so that both engines split the observations at
+    the same edges.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from pltstat.singlefeat import _histplot_spec
+    >>> float(_histplot_spec(pd.Series([1.0, 2.0, 2.0]), bins=2, show_mode=True).mode)
+    2.0
+    """
+    values = df_column.dropna().to_numpy()
+    counts, bin_edges = np.histogram(values, bins=bins)
+
+    mode = None
+    mode_count = 0
+    if show_mode:
+        value_counts = df_column.value_counts()
+        if len(value_counts) > 0:
+            mode = value_counts.index[0]
+            mode_count = int(value_counts.values[0])
+
+    return _HistplotSpec(
+        series=df_column,
+        values=values,
+        bin_edges=bin_edges,
+        counts=counts,
+        mode=mode,
+        mode_count=mode_count,
+        title=df_column.name,
+    )
+
+
+# --- Matplotlib renderers ---
+
+
+def _pie_mpl(spec, ax=None, figsize=None, **kwargs):
+    """
+    Draw a pie chart with matplotlib.
+
+    Parameters
+    ----------
+    spec : _PieSpec
+        Plot-ready data built by :func:`_pie_spec`.
+    ax : matplotlib.axes.Axes or None, default: None
+        Axes to draw on. If None, a new figure and Axes are created.
+    figsize : tuple or None, default: None
+        Size of the figure in inches. Ignored if ``ax`` is not None.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``ax.pie()``.
+
+    Returns
+    -------
+    None
+        The function modifies the plot in place and does not return any value.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+    ax.set_title(spec.title)
+
+    # The labels are precomputed, so they are consumed in the order matplotlib
+    # draws the slices instead of being looked up by percentage.
+    labels = iter(spec.labels)
+    ax.pie(
+        spec.values,
+        labels=spec.categories,
+        autopct=lambda pct: next(labels),
+        explode=[0.02] * len(spec.values),
+        **kwargs,
+    )
+
+
+def _countplot_mpl(spec, is_color=True, ax=None, figsize=(18, 6), **kwargs):
+    """
+    Draw a count plot with matplotlib.
+
+    Parameters
+    ----------
+    spec : _CountplotSpec
+        Plot-ready data built by :func:`_countplot_spec`.
+    is_color : bool, default: True
+        If True, the bars are coloured with the "muted" palette.
+    ax : matplotlib.axes.Axes or None, default: None
+        Axes to draw on. If None, a new figure and Axes are created.
+    figsize : tuple, default: (18, 6)
+        Size of the figure in inches. Ignored if ``ax`` is not None.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``sns.countplot()``.
+
+    Returns
+    -------
+    None
+        The function modifies the plot in place and does not return any value.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+    if is_color:
+        hue = spec.colname
+        palette = "muted"
+    else:
+        hue = None
+        palette = None
+
+    sns.countplot(
+        spec.series.to_frame(),
+        x=spec.colname,
+        order=spec.order,
+        palette=palette,
+        hue=hue,
+        legend=False,
+        ax=ax,
+        **kwargs,
+    )
+
+    for position, (count, label) in enumerate(zip(spec.counts, spec.labels)):
+        ax.text(
+            position,
+            count,
+            label,
+            fontsize=12,
+            horizontalalignment="center",
+            verticalalignment="center",
+        )
+
+    # Text should not be above the limits:
+    max_height = spec.counts.max()
+    ax.set_ylim(0, max_height + 1)
+
+
+def _histplot_mpl(spec, is_limits=False, bins="auto", kde=True, show_mode=False,
+                  ax=None, figsize=(18, 6), **kwargs):
+    """
+    Draw a histogram with matplotlib.
+
+    Parameters
+    ----------
+    spec : _HistplotSpec
+        Plot-ready data built by :func:`_histplot_spec`.
+    is_limits : bool, default: False
+        If True, the KDE curve is clipped to the range of the data.
+    bins : int, str or array-like, default: "auto"
+        Binning passed to ``sns.histplot()``.
+    kde : bool, default: True
+        If True, a kernel density estimate is overlaid on the histogram.
+    show_mode : bool, default: False
+        If True, the mode of the data is displayed with its count.
+    ax : matplotlib.axes.Axes or None, default: None
+        Axes to draw on. If None, a new figure and Axes are created.
+    figsize : tuple, default: (18, 6)
+        Size of the figure in inches. Ignored if ``ax`` is not None.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``sns.histplot()``.
+
+    Returns
+    -------
+    None
+        The function modifies the plot in place and does not return any value.
+    """
+    if is_limits:
+        kde_kws = {"clip": (spec.series.min(), spec.series.max())}
+    else:
+        kde_kws = None
+
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+    sns.histplot(spec.series, kde=kde, kde_kws=kde_kws, bins=bins, ax=ax, **kwargs)
+
+    # Get coordinates for the texts (bin heights)
+    for p in ax.patches:
+        height = p.get_height()
+        x = p.get_x() + p.get_width() / 2
+        # Add text at the top of each bin
+        ax.text(x, height + 0.1, str(int(height)), ha="center", va="bottom", fontsize=10)
+
+    max_height = np.array([p.get_height() for p in ax.patches]).max()
+
+    ax.set_ylim(0, max_height + 1)
+
+    if show_mode is False:
+        return
+
+    mode = spec.mode
+    ax.vlines(mode, 0, max_height, colors="r", label="mode")
+    ax.text(
+        mode,
+        max_height,
+        f"mode={mode:.2f}",
+        fontsize=12,
+        horizontalalignment="right",
+        verticalalignment="top",
+        rotation="vertical",
+    )
+    ax.text(
+        mode,
+        max_height,
+        f"count={spec.mode_count:d}",
+        fontsize=12,
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation="vertical",
+    )
+
+
+# --- Plotly renderers ---
+
+
+def _pie_plotly(spec, figsize=None, **kwargs):
+    """
+    Draw a pie chart with plotly.
+
+    Parameters
+    ----------
+    spec : _PieSpec
+        Plot-ready data built by :func:`_pie_spec`.
+    figsize : tuple or None, default: None
+        Size of the figure in inches, converted to pixels.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Pie``.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The pie chart.
+    """
+    go, _ = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    fig = go.Figure(
+        go.Pie(
+            labels=[str(category) for category in spec.categories],
+            values=spec.values,
+            text=spec.labels,
+            textinfo="label+text",
+            # Plotly reorders the slices by value unless sorting is disabled
+            sort=False,
+            pull=0.02,
+            hovertemplate="%{label}<br>%{text}<extra></extra>",
+            **kwargs,
+        )
+    )
+    fig.update_layout(title=spec.title, width=width, height=height)
+
+    return fig
+
+
+def _countplot_plotly(spec, is_color=True, figsize=(18, 6), **kwargs):
+    """
+    Draw a count plot with plotly.
+
+    Parameters
+    ----------
+    spec : _CountplotSpec
+        Plot-ready data built by :func:`_countplot_spec`.
+    is_color : bool, default: True
+        If True, the bars are coloured with the "muted" palette.
+    figsize : tuple, default: (18, 6)
+        Size of the figure in inches, converted to pixels.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Bar``.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The count plot.
+    """
+    go, _ = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    if is_color:
+        marker_color = cm.get_palette_hex("muted", len(spec.order))
+    else:
+        marker_color = None
+
+    fig = go.Figure(
+        go.Bar(
+            x=[str(category) for category in spec.order],
+            y=spec.counts,
+            text=[label.replace("\n", "<br>") for label in spec.labels],
+            textposition="outside",
+            marker_color=marker_color,
+            hovertemplate="%{x}<br>count = %{y}<extra></extra>",
+            **kwargs,
+        )
+    )
+    fig.update_layout(
+        width=width,
+        height=height,
+        showlegend=False,
+        xaxis_title=spec.colname,
+        yaxis_title="count",
+        yaxis_range=[0, spec.counts.max() + 1],
+    )
+
+    return fig
+
+
+def _histplot_plotly(spec, is_limits=False, kde=True, show_mode=False,
+                     figsize=(18, 6), **kwargs):
+    """
+    Draw a histogram with plotly.
+
+    Parameters
+    ----------
+    spec : _HistplotSpec
+        Plot-ready data built by :func:`_histplot_spec`.
+    is_limits : bool, default: False
+        If True, the KDE curve is clipped to the range of the data.
+    kde : bool, default: True
+        If True, a kernel density estimate is overlaid on the histogram.
+    show_mode : bool, default: False
+        If True, the mode of the data is displayed with its count.
+    figsize : tuple, default: (18, 6)
+        Size of the figure in inches, converted to pixels.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Bar``.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The histogram.
+    """
+    go, _ = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    edges = spec.bin_edges
+    centers = (edges[:-1] + edges[1:]) / 2
+    widths = np.diff(edges)
+
+    fig = go.Figure(
+        go.Bar(
+            x=centers,
+            y=spec.counts,
+            width=widths,
+            text=[str(int(count)) for count in spec.counts],
+            textposition="outside",
+            marker_line_width=1,
+            marker_line_color="white",
+            name="count",
+            hovertemplate="count = %{y}<extra></extra>",
+            **kwargs,
+        )
+    )
+
+    if kde and (np.unique(spec.values).size > 1):
+        # Scale the density to the histogram of counts, as seaborn does
+        clip = (spec.values.min(), spec.values.max()) if is_limits else None
+        scale = len(spec.values) * widths.mean()
+        grid, density = kde_curve(spec.values, clip=clip, scale=scale)
+        fig.add_trace(
+            go.Scatter(x=grid, y=density, mode="lines", name="kde", hoverinfo="skip")
+        )
+
+    if show_mode and (spec.mode is not None):
+        fig.add_vline(
+            x=spec.mode,
+            line_color="red",
+            annotation_text=f"mode={spec.mode:.2f} count={spec.mode_count:d}",
+            annotation_textangle=-90,
+        )
+
+    fig.update_layout(
+        title=spec.title,
+        width=width,
+        height=height,
+        showlegend=False,
+        yaxis_range=[0, spec.counts.max() + 1],
+    )
+
+    return fig
+
+
+# --- Public plotting functions ---
+
+
+def pie(df_column, ax=None, figsize=None, is_count_order=True, engine=None, **kwargs):
     """
     Plot a pie chart of the value counts of a DataFrame column with enhanced settings.
 
     This function generates a pie chart displaying the proportions of unique values
     in a pandas Series. The chart includes both percentage and absolute count for each slice.
-    Additional arguments can be passed to `ax.pie()` for further customization of the chart.
+    Additional arguments can be passed to the underlying plotting call for further
+    customization of the chart.
 
     Parameters
     ----------
@@ -27,30 +639,35 @@ def pie(df_column, ax=None, figsize=None, is_count_order=True, **kwargs):
     ax : matplotlib.axes.Axes, optional, default=None
         The Matplotlib Axes object to plot on. If None, the pie chart will be
         created on the current active plot.
+        Ignored when ``engine="plotly"``.
     figsize : tuple or None, optional, default=None
         The size of the figure. If None, default sizes are used.
         Note: `figsize` is ignored if the input parameter `ax` is not None.
+        With ``engine="plotly"`` it is converted to pixels at 100 dpi.
     is_count_order : bool, optional, default=True
         If True, the bars will be ordered by the count of occurrences in descending order.
         If False, the bars will be ordered according to the original order of the values.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
     **kwargs : keyword arguments, optional
-        Additional arguments to pass to `ax.pie()` to further customize the pie chart,
-        such as `colors`, `startangle`, `shadow`, etc.
+        Additional arguments to further customize the pie chart. They are passed
+        to ``ax.pie()`` with matplotlib and to ``plotly.graph_objects.Pie`` with
+        plotly, so they are engine specific.
 
     Returns
     -------
-    None
-        The function modifies the plot in place and does not return any value.
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``. With matplotlib the function
+        modifies the plot in place and returns None.
 
     Notes
     -----
     - The pie chart includes custom labels showing both the percentage and the
       absolute count of each category.
-    - The `autopct` function formats the labels to display one decimal point
-      for the percentage and the exact count.
     - The slices are slightly exploded (offset) to enhance visualization.
-    - Additional keyword arguments can be used to modify the pie chart, such as
-      `colors`, `startangle`, `shadow`, etc.
+    - The labels are computed before drawing, so two categories with the same
+      count are labelled with their own count.
 
     Example
     --------
@@ -59,46 +676,14 @@ def pie(df_column, ax=None, figsize=None, is_count_order=True, **kwargs):
     >>> data = pd.Series(['A', 'B', 'A', 'C', 'B', 'A', 'B', 'B'])
     >>> pie(data)
     """
-    value_counts = df_column.value_counts()
-    value_counts_norm = df_column.value_counts(normalize=True)
-    cat_number = value_counts.shape[0]
+    engine = _resolve_engine(engine)
+    spec = _pie_spec(df_column, is_count_order=is_count_order)
 
-    def format_pie_label(pct, allvals_norm, allvals):
-        """Return a formatted string with percentage and absolute value.
+    if engine == "matplotlib":
+        return _pie_mpl(spec, ax=ax, figsize=figsize, **kwargs)
 
-        Args:
-            pct (float): Percentage value.
-            allvals_norm (array-like): Normalized values summing to 1.
-            allvals (array-like): Absolute values corresponding to allvals_norm.
-
-        Returns:
-            str: Formatted string with percentage and absolute count.
-        """
-        TOL = 0.01
-        mask = np.where(np.abs(round(pct, 2) - 100 * np.round(allvals_norm, 4)) < TOL)[0][0]
-        absolute = allvals[mask]
-
-        return f"{pct:.1f}% ({absolute:d})"
-
-    if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-
-    ax.set_title(df_column.name)
-
-    if is_count_order is True:
-        value_counts = value_counts.sort_values()
-        value_counts_norm = value_counts_norm.sort_values()
-    else:
-        value_counts = value_counts.sort_index()
-        value_counts_norm = value_counts_norm.sort_index()
-
-    ax.pie(
-        value_counts.values,
-        labels=value_counts.index,
-        autopct=lambda pct: format_pie_label(pct, value_counts_norm.values, value_counts.values),
-        explode=[0.02] * cat_number,
-        **kwargs,
-    )
+    _warn_ignored_mpl_params(engine, ax=ax)
+    return _pie_plotly(spec, figsize=figsize, **kwargs)
 
 
 def countplot(
@@ -108,6 +693,7 @@ def countplot(
         ax=None,
         figsize=(18, 6),
         is_group_small_cats=True,
+        engine=None,
         **kwargs
 ):
     """
@@ -121,125 +707,63 @@ def countplot(
     Parameters
     ----------
     df_column : pd.Series
-        The pandas Series containing the categorical data to plot. It can be
-        any Series with categorical or object-type data.
+        The pandas Series containing the categorical data to plot.
     is_count_order : bool, optional, default=True
         If True, the bars will be ordered by the count of occurrences in descending order.
-        If False, the bars will be ordered according to the original order of the values.
+        If False, the bars will be ordered according to the sorted order of the values.
     is_color : bool, optional, default=True
-        If True, bars are colored using the column's unique values with the "muted" palette.
-        If False, a default single color is used.
+        If True, the bars are coloured with the "muted" palette.
     ax : matplotlib.axes.Axes, optional, default=None
         An existing matplotlib Axes to plot on. If None, a new figure and Axes are created.
+        Ignored when ``engine="plotly"``.
     figsize : tuple of (float, float), optional, default=(18, 6)
         The size of the figure in inches. Ignored if `ax` is not None.
+        With ``engine="plotly"`` it is converted to pixels at 100 dpi.
     is_group_small_cats : bool, optional, default=True
-        If True, groups small categories into an "Other" category when there are too many unique values of a categorical
-        feature.
-
+        If True, groups categories which are not among the 20 most frequent ones
+        into an "Other" category.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
     **kwargs : keyword arguments, optional
-        Additional arguments passed to `sns.countplot()` for further customization of the plot.
+        Additional arguments to further customize the plot. They are passed to
+        ``sns.countplot()`` with matplotlib and to ``plotly.graph_objects.Bar``
+        with plotly, so they are engine specific.
 
     Returns
     -------
-    None
-        The function modifies the plot in place and does not return any value.
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``. With matplotlib the function
+        modifies the plot in place and returns None.
 
     Notes
     -----
-    - The percentage and raw count are displayed above each bar for better visualization.
-    - If `is_count_order=True`, the `order` argument of `sns.countplot()` is modified
-      to display the categories in descending order of frequency.
-    - The `figsize` parameter has no effect if `ax` is not None.
+    - Each bar is annotated with the percentage and the count of the category.
+    - The "Other" category is always drawn last.
 
     Example
     --------
     >>> import pandas as pd
-    >>> import seaborn as sns
     >>> from pltstat.singlefeat import countplot
     >>> data = pd.Series(['A', 'B', 'A', 'C', 'B', 'A', 'B', 'B'])
     >>> countplot(data, is_count_order=True, is_color=True, figsize=(12, 4))
     """
-    if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-
-    colname = df_column.name
-    if colname is None:
-        temp_name = 'Values'
-        df_column.name = temp_name
-        colname = temp_name
-
-    if is_color:
-        hue = colname
-        palette = "muted"
-    else:
-        hue = None
-        palette = None
-
-    # Change non-top 20 categories to "Other" group:
-    put_other_at_the_end = False
-    n_unique = len(df_column.dropna().unique())
-    if (n_unique > THRESHOLD_MANY_CATS):
-        if is_group_small_cats is True:
-            other_val = "Other"
-            value_counts = df_column.dropna().value_counts()
-
-            # Find top 20 categories:
-            if n_unique > THRESHOLD_MANY_CATS:
-                top_20 = value_counts.iloc[:THRESHOLD_MANY_CATS]
-                min_top_count = value_counts.iloc[THRESHOLD_MANY_CATS]  # Count of the 21st category
-
-                # Find categories for Other group:
-                other_mask = value_counts <= min_top_count
-                other_categories = value_counts[other_mask].index
-
-                # Replace small categories to Other group:
-                other_replacer = dict(zip(other_categories, [other_val] * len(other_categories)))
-                df_column = df_column.replace(other_replacer)
-                put_other_at_the_end = True
-
-    if is_count_order:
-        order = df_column.value_counts().index
-    else:
-        order = df_column.unique()
-        order = np.sort(order)
-
-    # Put Other category at the end of the order:
-    if put_other_at_the_end is True:
-        order = order[order != other_val]
-        order = np.append(order, other_val)
-
-    sns.countplot(
-        df_column.to_frame(),
-        x=colname,
-        order=order,
-        palette=palette,
-        hue=hue,
-        legend=False,
-        ax=ax,
-        **kwargs,
+    engine = _resolve_engine(engine)
+    spec = _countplot_spec(
+        df_column,
+        is_count_order=is_count_order,
+        is_group_small_cats=is_group_small_cats,
     )
 
-    total = len(df_column)
-    for p in ax.patches:
-        text = f"{100 * p.get_height() / total:.1f}% \n ({p.get_height():.0f})"
-        x = p.get_x() + p.get_width() / 2
-        y = p.get_height()
-        ax.text(
-            x,
-            y,
-            text,
-            fontsize=12,
-            horizontalalignment="center",
-            verticalalignment="center",
-        )
+    if engine == "matplotlib":
+        return _countplot_mpl(spec, is_color=is_color, ax=ax, figsize=figsize, **kwargs)
 
-    # Text should not be above the limits:
-    max_height = np.array([p.get_height() for p in ax.patches]).max()
-    ax.set_ylim(0, max_height + 1)
+    _warn_ignored_mpl_params(engine, ax=ax)
+    return _countplot_plotly(spec, is_color=is_color, figsize=figsize, **kwargs)
 
 
-def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False, ax=None, figsize=(18, 6), **kwargs):  # , n_modes=0):
+def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False, ax=None,
+             figsize=(18, 6), engine=None, **kwargs):
     """
     Plot a histogram with a Kernel Density Estimation (KDE) overlay and additional statistics.
 
@@ -255,29 +779,39 @@ def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False,
     is_limits : bool, optional, default=False
         If True, the limits for the KDE plot are set based on the minimum and maximum values
         of the data. If False, the KDE plot is drawn without limits.
-    bins : int, optional, default=None
-        The number of bins to use for the histogram. If None, an automatic binning strategy is used.
+    bins : int, str or array-like, optional, default='auto'
+        The bins to use for the histogram, as accepted by :func:`numpy.histogram`.
     kde : bool, optional, default=True
         If True, a Kernel Density Estimation (KDE) plot is overlaid on the histogram.
     show_mode : bool, optional, default=False
         If True, the mode (most frequent value) of the data is displayed on the plot with its count.
     ax : matplotlib.axes.Axes, optional, default=None
         An existing matplotlib Axes to plot on. If None, a new figure and Axes are created.
+        Ignored when ``engine="plotly"``.
     figsize : tuple of (float, float), optional, default=(18, 6)
         The size of the figure in inches. Ignored if `ax` is not None.
+        With ``engine="plotly"`` it is converted to pixels at 100 dpi.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
     **kwargs : keyword arguments, optional
-        Additional keyword arguments passed to `sns.histplot()`.
+        Additional arguments to further customize the plot. They are passed to
+        ``sns.histplot()`` with matplotlib and to ``plotly.graph_objects.Bar``
+        with plotly, so they are engine specific.
 
     Returns
     -------
-    None
-        The function modifies the plot in place and does not return any value.
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``. With matplotlib the function
+        modifies the plot in place and returns None.
 
     Notes
     -----
     - The histogram is annotated with the mode (the most frequent value) of the data if `show_mode=True`.
     - The mode's value and count are displayed on the plot, indicated by a red vertical line.
     - The KDE plot is overlaid on the histogram, and the KDE limits are adjusted if `is_limits=True`.
+    - With plotly the density is estimated by :func:`pltstat.stat_methods.kde_curve`,
+      which uses the same bandwidth rule as seaborn.
 
 
     Example
@@ -297,53 +831,29 @@ def histplot(df_column, is_limits=False, bins='auto', kde=True, show_mode=False,
     >>> s = pd.Series(clipped_values)
     >>> histplot(s, show_mode=True, bins=np.arange(-5, 106, 10))
     """
-    if is_limits:
-        kde_kws = {"clip": (df_column.min(), df_column.max())}
-    else:
-        kde_kws = None
+    engine = _resolve_engine(engine)
+    spec = _histplot_spec(df_column, bins=bins, show_mode=show_mode)
 
-    if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
+    if engine == "matplotlib":
+        return _histplot_mpl(
+            spec,
+            is_limits=is_limits,
+            bins=bins,
+            kde=kde,
+            show_mode=show_mode,
+            ax=ax,
+            figsize=figsize,
+            **kwargs,
+        )
 
-    sns.histplot(df_column, kde=kde, kde_kws=kde_kws, bins=bins, ax=ax)
-
-    # Get coordinates for the texts (bin heights)
-    for p in ax.patches:
-        height = p.get_height()
-        x = p.get_x() + p.get_width() / 2
-        # Add text at the top of each bin
-        ax.text(x, height + 0.1, str(int(height)), ha='center', va='bottom', fontsize=10)
-
-    top_values = df_column.value_counts().index.to_numpy()
-    top_counts = df_column.value_counts().values
-
-    max_height = np.array([p.get_height() for p in ax.patches]).max()
-
-    ax.set_ylim(0, max_height + 1)
-    # ax.legend()
-
-    if show_mode is False:
-        return
-
-    mode = top_values[0]
-    ax.vlines(mode, 0, max_height, colors="r", label="mode")
-    ax.text(
-        mode,
-        max_height,
-        f"mode={mode:.2f}",
-        fontsize=12,
-        horizontalalignment="right",
-        verticalalignment="top",
-        rotation="vertical",
-    )
-    ax.text(
-        mode,
-        max_height,
-        f"count={top_counts[0]:d}",
-        fontsize=12,
-        horizontalalignment="left",
-        verticalalignment="top",
-        rotation="vertical",
+    _warn_ignored_mpl_params(engine, ax=ax)
+    return _histplot_plotly(
+        spec,
+        is_limits=is_limits,
+        kde=kde,
+        show_mode=show_mode,
+        figsize=figsize,
+        **kwargs,
     )
 
 
@@ -354,6 +864,7 @@ def auto_naive_plot(
     is_show_average=True,
     is_count_order=None,
     is_group_small_cats=True,
+    engine=None,
 ):
     """
     Plot information about a DataFrame column based on the type of values.
@@ -377,11 +888,16 @@ def auto_naive_plot(
     is_group_small_cats : bool, optional, default=True
         If True, groups small categories into an "Other" category when there are too many unique values of a categorical
         feature.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
 
     Returns
     -------
-    None
-        The function modifies the plot in place and does not return any value.
+    fig : plotly.graph_objects.Figure or None
+        The figure of the chosen plot when ``engine="plotly"``. With matplotlib
+        the function modifies the plot in place and returns None. None is also
+        returned when the feature cannot be plotted.
 
     Notes
     -----
@@ -480,13 +996,20 @@ def auto_naive_plot(
         elif n_unique == 1:
             print(f"Only one unique value: {df_column[0]}")
         elif n_unique < THRESHOLD_BIG_CAT:
-            pie(df_column, is_count_order=is_count_order)
+            return pie(df_column, is_count_order=is_count_order, engine=engine)
         elif dtype.startswith("Categorical"):
-            countplot(df_column, is_count_order=is_count_order, is_group_small_cats=is_group_small_cats)
+            return countplot(
+                df_column,
+                is_count_order=is_count_order,
+                is_group_small_cats=is_group_small_cats,
+                engine=engine,
+            )
         else:
-            histplot(df_column, is_limits=is_limits)
+            return histplot(df_column, is_limits=is_limits, engine=engine)
 
     except Exception:
         print("Unable to determine feature format or plot it")
+
+    return None
     # print('un', n_unique)
     # print('# nan:', n_nan)

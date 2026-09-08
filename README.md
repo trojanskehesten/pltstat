@@ -2,6 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/pltstat.svg)](https://pypi.org/project/pltstat/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pltstat.svg)](https://pypi.org/project/pltstat/)
+[![Tests](https://github.com/trojanskehesten/pltstat/actions/workflows/tests.yml/badge.svg)](https://github.com/trojanskehesten/pltstat/actions/workflows/tests.yml)
 [![License](https://img.shields.io/github/license/trojanskehesten/pltstat.svg)](LICENSE)
 [![GitHub last commit](https://img.shields.io/github/last-commit/trojanskehesten/pltstat.svg)](https://github.com/trojanskehesten/pltstat)
 
@@ -13,14 +14,15 @@
 
 ### Requirements
 
-Before installing, make sure that you are using **Python 3.12**.  
+`pltstat` supports **Python 3.10 to 3.14**. Every release is tested against
+each of these versions.  
 You can check your Python version by running:
 
    ```bash
    python --version
    ```
 
-You can download it from the [official Python website](https://www.python.org/downloads/release/python-3120/).
+You can download Python from the [official Python website](https://www.python.org/downloads/).
 
   
 ### Installation
@@ -94,13 +96,17 @@ After installation the package, you can start using `pltstat` by importing the n
    cd pltstat
    ```
 
-3. **Python Version**: This library is compatible with [Python 3.12](https://www.python.org/downloads/release/python-3120/). Ensure you have this version installed before running the project.
+3. **Python Version**: This library is compatible with [Python 3.10 to 3.14](https://www.python.org/downloads/). Ensure that one of these versions is installed before running the project.
 
-4. **R Installation**: Ensure that the [R language is installed](https://cloud.r-project.org/) on your system, as the `rpy2` library (used in this project) requires it.
-
-5. Install dependencies:
+4. Install dependencies:
    ```bash
    pip install -r requirements.txt
+   ```
+
+5. Run the test suite (optional):
+   ```bash
+   pip install -e ".[test]"
+   pytest
    ```
 
 6. Explore the modules and utilize the library in your projects.
@@ -109,6 +115,47 @@ After installation the package, you can start using `pltstat` by importing the n
 
 ## Usage
 Each module in `pltstat` is designed to be modular and reusable. Import the required module and use its functions to visualize your statistical data.  
+
+### Rendering engine
+
+Every plotting function can draw with **matplotlib** (the default) or with
+**plotly**. Choose the engine in either of two ways.
+
+Set it once for the whole session:
+
+```python
+import pltstat
+from pltstat import singlefeat as sf
+
+pltstat.set_backend("plotly")
+fig = sf.pie(df["A/B Test Group"])   # returns a plotly Figure
+```
+
+Or override it for a single call with the `engine` parameter:
+
+```python
+fig = sf.pie(df["A/B Test Group"], engine="plotly")
+sf.pie(df["A/B Test Group"], engine="matplotlib")   # draws in place
+```
+
+A `backend` context manager changes the engine for a block only:
+
+```python
+with pltstat.backend("plotly"):
+    fig = sf.pie(df["A/B Test Group"])
+```
+
+With matplotlib the functions draw in place and return `None`, as before. With
+plotly they return a `plotly.graph_objects.Figure`, which a notebook renders on
+its own. The functions which return data, `pvals_num`, `pvals_cat`,
+`pvals_num_cat` and `dist_qq_plot`, keep returning that data with either
+engine; pass `fig_return=True` to get the pair `(data, figure)`.
+
+The `ax` parameter belongs to matplotlib and is ignored, with a warning, when
+the engine is plotly. `figsize` is converted to pixels at 100 dpi. Keyword
+arguments collected by `**kwargs` reach the underlying call of the engine in
+use, so they are engine specific. The output of the two engines is equivalent,
+not identical pixel for pixel.
 
 ### Example 1: Pie Chart  
 ```python
@@ -125,7 +172,7 @@ df = pd.DataFrame(data)
 sf.pie(df["A/B Test Group"])
 ```
 **Result 1**  
-<img src="docs/pie_plot.png" alt="Pie plot example" width="200"/>
+<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.10.1/docs/pie_plot.png" alt="Pie plot example" width="200"/>
 
 ### Example 2: Boxplot  
 ```python
@@ -148,7 +195,7 @@ df = pd.DataFrame(data)
 tf.boxplot(df, "gender", "age")
 ```
 **Result 2**  
-<img src="docs/boxplot.png" alt="Distribution boxplot example" width="800"/>
+<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.10.1/docs/boxplot.png" alt="Distribution boxplot example" width="800"/>
 
 ### Example 3: Boxplot and Distribution Plot
 ```python
@@ -167,7 +214,7 @@ df = pd.DataFrame({
 tf.dis_box_plot(df, cat_feat='category', num_feat='value')
 ```
 **Result 3**  
-<img src="docs/dis_box_plot.png" alt="Distribution boxplot example" width="800"/>
+<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.10.1/docs/dis_box_plot.png" alt="Distribution boxplot example" width="800"/>
 
 ---
 

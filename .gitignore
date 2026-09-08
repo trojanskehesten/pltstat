@@ -19,5 +19,9 @@ __pycache__/
 tests.py
 
 # Setup results
+build/
 dist/
 pltstat.egg-info/
+
+# Compiled kernel cache of numba
+.numba-cache/
