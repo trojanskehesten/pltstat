@@ -151,12 +151,12 @@ def cramer_v(data1, data2):
      >>> data1 = ['A', 'A', 'B', 'B', 'C', 'C']
      >>> data2 = ['X', 'Y', 'X', 'Y', 'X', 'Y']
      >>> cramer_v(data1, data2)
-     1.0
+     0.0
 
      >>> data1 = ['A', 'A', 'A', 'B', 'B', 'C']
      >>> data2 = ['X', 'X', 'Y', 'X', 'Y', 'Y']
      >>> cramer_v(data1, data2)
-     0.6454972243679028
+     0.4714045207910317
      """
     obs = pd.crosstab(data1, data2)
     corr_cramer_v = cramer_v_by_obs(obs)

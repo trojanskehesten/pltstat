@@ -2,6 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/pltstat.svg)](https://pypi.org/project/pltstat/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pltstat.svg)](https://pypi.org/project/pltstat/)
+[![Tests](https://github.com/trojanskehesten/pltstat/actions/workflows/tests.yml/badge.svg)](https://github.com/trojanskehesten/pltstat/actions/workflows/tests.yml)
 [![License](https://img.shields.io/github/license/trojanskehesten/pltstat.svg)](LICENSE)
 [![GitHub last commit](https://img.shields.io/github/last-commit/trojanskehesten/pltstat.svg)](https://github.com/trojanskehesten/pltstat)
 
@@ -13,14 +14,15 @@
 
 ### Requirements
 
-Before installing, make sure that you are using **Python 3.12**.  
+`pltstat` supports **Python 3.10 to 3.14**. Every release is tested against
+each of these versions.  
 You can check your Python version by running:
 
    ```bash
    python --version
    ```
 
-You can download it from the [official Python website](https://www.python.org/downloads/release/python-3120/).
+You can download Python from the [official Python website](https://www.python.org/downloads/).
 
   
 ### Installation
@@ -94,13 +96,17 @@ After installation the package, you can start using `pltstat` by importing the n
    cd pltstat
    ```
 
-3. **Python Version**: This library is compatible with [Python 3.12](https://www.python.org/downloads/release/python-3120/). Ensure you have this version installed before running the project.
+3. **Python Version**: This library is compatible with [Python 3.10 to 3.14](https://www.python.org/downloads/). Ensure that one of these versions is installed before running the project.
 
-4. **R Installation**: Ensure that the [R language is installed](https://cloud.r-project.org/) on your system, as the `rpy2` library (used in this project) requires it.
-
-5. Install dependencies:
+4. Install dependencies:
    ```bash
    pip install -r requirements.txt
+   ```
+
+5. Run the test suite (optional):
+   ```bash
+   pip install -e ".[test]"
+   pytest
    ```
 
 6. Explore the modules and utilize the library in your projects.
