@@ -7,7 +7,6 @@ including Spearman's correlation, Mann-Whitney p-values, and Phik correlations.
 """
 
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
 
 import seaborn as sns
 
@@ -25,67 +24,59 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import matthews_corrcoef
 
 from . import cm
+from .config import (
+    _figsize_to_px,
+    _import_plotly,
+    _resolve_engine,
+    _warn_ignored_mpl_params,
+    get_auto_show,
+)
 
 from .stat_methods import cramer_v
-from .stat_methods import chi2_fisher_by_cat, kruskal_by_cat, mannwhitneyu_by_cat
+from .stat_methods import chi2_fisher_by_cat, kde_curve, kruskal_by_cat, mannwhitneyu_by_cat
 
-def nulls(
-    df,
-    figsize=(20, 10),
-    index=None,
-    n_ticks=None,
-    print_str_index=False,
-    print_all=True,
-):
+
+def _nulls_spec(df, index=None, n_ticks=None, print_str_index=False, print_all=True):
     """
-    Plot a heatmap to visualize null values in the DataFrame.
+    Compute the ticks and the labels of the y axis of a heatmap of nulls.
 
     Parameters
     ----------
     df : pd.DataFrame
-        The input DataFrame containing the data.
-    figsize : tuple, optional, default=(20, 10)
-        The size of the figure (width, height) in inches.
-    index : str, optional, default=None
-        The name of the column to use as the y-axis label. If None, the index is used.
-    n_ticks : int, optional, default=None
-        The number of y-axis ticks to display. If None, 10+1 ticks will be displayed.
-    print_str_index : bool, optional, default=False
-        If True and the index is a string type, print the index values as labels.
-    print_all : bool, optional, default=True
-        If True, display all index values; if False, display only the `n_ticks` specified.
+        The DataFrame whose missing values are drawn.
+    index : str or None, default: None
+        Name of the column used to label the y axis. If None, the index of
+        the DataFrame is used.
+    n_ticks : int or None, default: None
+        Number of ticks of the y axis. If None, 11 ticks are used.
+    print_str_index : bool, default: False
+        If True and the labels are strings, they are printed as labels.
+    print_all : bool, default: True
+        If True, every label is printed instead of only ``n_ticks`` of them.
 
     Returns
     -------
-    None
-        The function creates a heatmap plot of null values and does not return any value.
+    y_ticks : np.ndarray
+        Positions of the ticks of the y axis.
+    y_labels : array-like
+        Labels of the ticks, aligned with ``y_ticks``.
+    index : str
+        Name of the y axis.
 
     Notes
     -----
-    - The plot shows the null values in the DataFrame as black color.
-    - The function dynamically adjusts the y-axis labels depending on the input DataFrame index or the specified `index` column.
+    The ticks are computed apart from the drawing, so that both engines label
+    the y axis in the same way.
 
-    Example
+    Examples
     --------
-    Basic usage with default settings.
-
     >>> import pandas as pd
-    >>> import numpy as np
-    >>> from pltstat.multfeats import nulls
-    >>>
-    >>> df = pd.DataFrame({
-    >>>     'A': [1, 2, np.nan, 4],
-    >>>     'B': [np.nan, 2, 3, 4],
-    >>>     'C': [1, np.nan, np.nan, 4]
-    >>> })
-    >>>
-    >>> nulls(df)
+    >>> from pltstat.multfeats import _nulls_spec
+    >>> data = pd.DataFrame({"A": [1, None, 3]})
+    >>> ticks, labels, name = _nulls_spec(data, n_ticks=3)
+    >>> name
+    'index'
     """
-    plt.figure(figsize=figsize)
-    sns.heatmap(
-        df.isnull().apply(np.invert), yticklabels=False, cbar=False, vmin=0, vmax=1
-    )
-    plt.title("Null values (black)")
     if n_ticks is None:
         n_ticks = 11  # 10+1
     y_ticks = np.linspace(0, len(df) - 1, n_ticks).astype("int64")
@@ -122,11 +113,311 @@ def nulls(
             else:
                 y_labels = y_ticks
 
+    return y_ticks, y_labels, index
+
+
+def _nulls_plotly(df, y_ticks, y_labels, index, figsize=(20, 10)):
+    """
+    Draw a heatmap of the missing values of a DataFrame with plotly.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame whose missing values are drawn.
+    y_ticks : np.ndarray
+        Positions of the ticks of the y axis.
+    y_labels : array-like
+        Labels of the ticks, aligned with ``y_ticks``.
+    index : str
+        Name of the y axis.
+    figsize : tuple, default: (20, 10)
+        Size of the figure in inches, converted to pixels.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The heatmap, with the missing values drawn in black.
+    """
+    go, _ = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    values = df.isnull().apply(np.invert).values.astype(int)
+
+    fig = go.Figure(
+        go.Heatmap(
+            z=values,
+            x=[str(column) for column in df.columns],
+            zmin=0,
+            zmax=1,
+            colorscale=[[0.0, "black"], [1.0, "#c6dbef"]],
+            showscale=False,
+            hovertemplate="%{x}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title="Null values (black)",
+        width=width,
+        height=height,
+        yaxis={
+            "title": index,
+            "tickmode": "array",
+            "tickvals": y_ticks,
+            "ticktext": [str(label) for label in y_labels],
+            # Seaborn draws the first row at the top, plotly at the bottom
+            "autorange": "reversed",
+        },
+    )
+
+    return fig
+
+
+def _dist_qq_plot_plotly(df, figsize, n_cols):
+    """
+    Draw a histogram and a Q-Q plot of every feature with plotly.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame containing the features to plot.
+    figsize : tuple
+        Size of the figure in inches, converted to pixels.
+    n_cols : int
+        Number of columns of the grid of subplots.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The grid of histograms and Q-Q plots.
+    shapiros : list[float]
+        p-value of the Shapiro-Wilk test of every feature.
+
+    Notes
+    -----
+    :func:`scipy.stats.probplot` is called without its ``plot`` argument, so
+    the quantiles are computed without drawing anything with matplotlib.
+    """
+    go, make_subplots = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    n_rows = int(np.ceil(2 * df.shape[1] / n_cols))
+
+    titles = []
+    shapiros = []
+    panels = []
+    for col in df:
+        median = df[col].median()
+        pval = stats.shapiro(df[col]).pvalue
+        shapiros.append(pval)
+        titles.append(col + "<br>Median=%.2f" % median)
+        titles.append(col + "<br>Shapiro pval=%.2f" % pval)
+        panels.append(col)
+
+    # Pad the titles so that every cell of the grid has one
+    titles += [""] * (n_rows * n_cols - len(titles))
+
+    fig = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=titles)
+
+    i = 0
+    for col in panels:
+        row, position = i // n_cols + 1, i % n_cols + 1
+        fig.add_trace(
+            go.Histogram(x=df[col], name=str(col), showlegend=False),
+            row=row,
+            col=position,
+        )
+        i += 1
+
+        row, position = i // n_cols + 1, i % n_cols + 1
+        (osm, osr), (slope, intercept, _) = stats.probplot(df[col], dist="norm")
+        fig.add_trace(
+            go.Scattergl(
+                x=osm, y=osr, mode="markers",
+                marker={"size": 3}, name=str(col), showlegend=False,
+            ),
+            row=row,
+            col=position,
+        )
+        line_x = np.array([osm.min(), osm.max()])
+        fig.add_trace(
+            go.Scatter(
+                x=line_x, y=intercept + slope * line_x, mode="lines",
+                line={"color": "red"}, showlegend=False, hoverinfo="skip",
+            ),
+            row=row,
+            col=position,
+        )
+        i += 1
+
+    fig.update_layout(width=width, height=height)
+
+    return fig, shapiros
+
+
+def _plot_umap_tsne_plotly(X_umap, X_tsne, labels=None, title_pref="",
+                           unnoisy_idx=None, figsize=(16, 6)):
+    """
+    Draw the UMAP and the t-SNE projections side by side with plotly.
+
+    Parameters
+    ----------
+    X_umap : np.ndarray
+        UMAP embedding of shape ``(n_samples, 2)``.
+    X_tsne : np.ndarray
+        t-SNE embedding of shape ``(n_samples, 2)``.
+    labels : array-like or None, default: None
+        Label of every point, used to colour the projections.
+    title_pref : str, default: ""
+        Prefix of the title of both projections.
+    unnoisy_idx : array-like or None, default: None
+        Indices of the points to draw. If None, every point is drawn.
+    figsize : tuple, default: (16, 6)
+        Size of the figure in inches, converted to pixels.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The two projections, sharing one legend.
+
+    Notes
+    -----
+    Plotly has no equivalent of the ``hue`` argument of seaborn, so one trace
+    is added per label. The traces of the two projections share a legend
+    group, so that the legend is shown once instead of twice.
+    """
+    go, make_subplots = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    if title_pref != "":
+        title_pref += " and "
+
+    fig = make_subplots(
+        rows=1,
+        cols=2,
+        subplot_titles=[f"{title_pref}UMAP projection", f"{title_pref}TSNE projection"],
+    )
+
+    if unnoisy_idx is None:
+        umap_xy = X_umap
+        tsne_xy = X_tsne
+        point_labels = labels
+    else:
+        umap_xy = X_umap[unnoisy_idx]
+        tsne_xy = X_tsne[unnoisy_idx]
+        point_labels = None if labels is None else np.asarray(labels)[unnoisy_idx]
+
+    if point_labels is None:
+        groups = [(None, np.arange(len(umap_xy)))]
+        colors = cm.get_palette_hex("tab10", 1)
+    else:
+        point_labels = np.asarray(point_labels)
+        unique_labels = np.unique(point_labels)
+        groups = [(label, np.where(point_labels == label)[0]) for label in unique_labels]
+        colors = cm.get_palette_hex("tab10", len(unique_labels))
+
+    for position, embedding in ((1, umap_xy), (2, tsne_xy)):
+        for (label, idx), color in zip(groups, colors):
+            fig.add_trace(
+                go.Scattergl(
+                    x=embedding[idx, 0],
+                    y=embedding[idx, 1],
+                    mode="markers",
+                    marker={"color": color, "size": 4},
+                    name=str(label),
+                    legendgroup=str(label),
+                    # One shared legend instead of one legend per projection
+                    showlegend=(position == 1) and (label is not None),
+                ),
+                row=1,
+                col=position,
+            )
+
+    fig.update_layout(width=width, height=height)
+
+    return fig
+
+
+def nulls(
+    df,
+    figsize=(20, 10),
+    index=None,
+    n_ticks=None,
+    print_str_index=False,
+    print_all=True,
+    engine=None,
+):
+    """
+    Plot a heatmap to visualize null values in the DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The input DataFrame containing the data.
+    figsize : tuple, optional, default=(20, 10)
+        The size of the figure (width, height) in inches.
+    index : str, optional, default=None
+        The name of the column to use as the y-axis label. If None, the index is used.
+    n_ticks : int, optional, default=None
+        The number of y-axis ticks to display. If None, 10+1 ticks will be displayed.
+    print_str_index : bool, optional, default=False
+        If True and the index is a string type, print the index values as labels.
+    print_all : bool, optional, default=True
+        If True, display all index values; if False, display only the `n_ticks` specified.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``. With matplotlib the function
+        creates a heatmap plot of null values and returns None.
+
+    Notes
+    -----
+    - The plot shows the null values in the DataFrame as black color.
+    - The function dynamically adjusts the y-axis labels depending on the input DataFrame index or the specified `index` column.
+
+    Example
+    --------
+    Basic usage with default settings.
+
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> from pltstat.multfeats import nulls
+    >>>
+    >>> df = pd.DataFrame({
+    >>>     'A': [1, 2, np.nan, 4],
+    >>>     'B': [np.nan, 2, 3, 4],
+    >>>     'C': [1, np.nan, np.nan, 4]
+    >>> })
+    >>>
+    >>> nulls(df)
+    """
+    engine = _resolve_engine(engine)
+    y_ticks, y_labels, index = _nulls_spec(
+        df,
+        index=index,
+        n_ticks=n_ticks,
+        print_str_index=print_str_index,
+        print_all=print_all,
+    )
+
+    if engine == "plotly":
+        return _nulls_plotly(df, y_ticks, y_labels, index, figsize=figsize)
+
+    plt.figure(figsize=figsize)
+    sns.heatmap(
+        df.isnull().apply(np.invert), yticklabels=False, cbar=False, vmin=0, vmax=1
+    )
+    plt.title("Null values (black)")
+
     plt.ylabel(index)
     plt.yticks(y_ticks, y_labels)
 
+    return None
 
-def dist_qq_plot(df, figsize, **kwargs):
+
+def dist_qq_plot(df, figsize, engine=None, fig_return=False, **kwargs):
     """
     Plot histograms and Q-Q plots for each feature of the DataFrame, along with the Shapiro-Wilk test p-values.
 
@@ -136,13 +427,22 @@ def dist_qq_plot(df, figsize, **kwargs):
         The DataFrame containing the features to be plotted. Each feature will have its own histogram and Q-Q plot.
     figsize : tuple
         The size of the figure (width, height) in inches.
+        With ``engine="plotly"`` it is converted to pixels at 100 dpi.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
+    fig_return : bool, optional, default=False
+        If True, the figure is returned next to the p-values.
     **kwargs : keyword arguments
         Additional arguments passed to the `sns.histplot()` function for customizing the histogram plots.
+        They are ignored when ``engine="plotly"``.
 
     Returns
     -------
     shapiros : np.ndarray
         An array containing the Shapiro-Wilk test p-values for each feature in the DataFrame.
+        When ``fig_return`` is True, the pair ``(shapiros, figure)`` is
+        returned; the figure is None with matplotlib.
 
     Notes
     -----
@@ -188,6 +488,16 @@ def dist_qq_plot(df, figsize, **kwargs):
         return
     n_rows = int(np.ceil(2 * n_cols_df / n_cols))
 
+    engine = _resolve_engine(engine)
+    if engine == "plotly":
+        fig, shapiros = _dist_qq_plot_plotly(df, figsize=figsize, n_cols=n_cols)
+        shapiros = np.array(shapiros)
+        if fig_return:
+            return shapiros, fig
+        if get_auto_show():
+            fig.show()
+        return shapiros
+
     #     if n_cols == 8:  ## TODO: calc width and height of figsize
     #         width = 20
     #     elif n_cols == 6:
@@ -222,6 +532,9 @@ def dist_qq_plot(df, figsize, **kwargs):
             shapiros.append(pval)
 
     shapiros = np.array(shapiros)
+
+    if fig_return:
+        return shapiros, None
 
     return shapiros
 
@@ -288,7 +601,8 @@ def embeddings_creation(X, n_components=2, standardize=True, random_state=0, uma
     return X_umap, X_tsne
 
 
-def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None, figsize=(16, 6)):
+def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
+                   figsize=(16, 6), engine=None):
     """
     Plot UMAP and t-SNE projections of data with cluster labels, optionally excluding noisy points.
 
@@ -308,14 +622,21 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
         Indices of non-noisy points. If provided, only those points will be plotted.
     figsize : tuple, optional, default=(16, 6)
         The size of the figure.
+        With ``engine="plotly"`` it is converted to pixels at 100 dpi.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
 
     Returns
     -------
-    None
-        The function creates a plot in place and does not return any value.
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``. With matplotlib the function
+        creates a plot in place and returns None.
 
     Notes
     -----
+    With plotly the two projections share one legend, because plotly has no
+    equivalent of the ``hue`` argument of seaborn and needs one trace per label.
     The function generates two side-by-side scatter plots showing the results of
     dimensionality reduction using UMAP and t-SNE, with the points colored according to
     the given cluster labels. If `unnoisy_idx` is provided, only the non-noisy points
@@ -334,6 +655,18 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
     """
     if isinstance(labels, str):
         labels = labels.astype("str")  # TODO str for categorical palette
+
+    engine = _resolve_engine(engine)
+    if engine == "plotly":
+        return _plot_umap_tsne_plotly(
+            X_umap,
+            X_tsne,
+            labels=labels,
+            title_pref=title_pref,
+            unnoisy_idx=unnoisy_idx,
+            figsize=figsize,
+        )
+
     fig, ax = plt.subplots(1, 2, figsize=figsize)
 
     if title_pref != "":
@@ -365,6 +698,8 @@ def plot_umap_tsne(X_umap, X_tsne, labels=None, title_pref="", unnoisy_idx=None,
             ax=ax[1],
         )
 
+    return None
+
 
 def heatmap_corr(
     df,
@@ -377,6 +712,7 @@ def heatmap_corr(
     figsize=(30, 20),
     linecolor="white",
     ax=None,
+    engine=None,
     **kwargs,
 ):
     """
@@ -408,8 +744,13 @@ def heatmap_corr(
        The color of the lines separating the cells in the heatmap.
     ax : matplotlib.axes.Axes or None, optional, default=None
         The axes on which to draw the plot. If None, a new figure and axes are created.
+        Ignored when ``engine="plotly"``.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
     **kwargs : keyword arguments
-       Additional parameters passed to `sns.heatmap`.
+       Additional parameters passed to the heatmap of the engine in use, so
+       they are engine specific.
 
     Returns
     -------
@@ -463,7 +804,7 @@ def heatmap_corr(
                 df.loc[:, col] = df.loc[:, col].map({col_un_vals[0]: 0, col_un_vals[1]: 1})
 
     if corr_type == "phik":
-        phik_corrs(
+        return phik_corrs(
             df=df,
             x=x,
             y=y,
@@ -472,13 +813,11 @@ def heatmap_corr(
             fmt=fmt,
             figsize=figsize,
             ax=ax,
+            engine=engine,
             **kwargs,
         )
-        return
 
-    # Create axes if not provided
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
+    engine = _resolve_engine(engine)
 
     corr = df.corr(corr_type)
 
@@ -492,15 +831,41 @@ def heatmap_corr(
 
     if (threshold is not None) and (corr_type == cramer_v):
         vmin = 0
-        cmap = cm.get_corr_thr_cmap(threshold=threshold, vmin=vmin)
+        thr = threshold
     elif threshold is not None:
         threshold /= 2
         vmin = -1
-        cmap = cm.get_corr_thr_cmap(threshold=threshold, vmin=vmin)
-
+        thr = threshold
     else:
-        cmap = "coolwarm"
+        thr = None
         vmin = -1
+
+    if engine == "plotly":
+        _warn_ignored_mpl_params(engine, ax=ax)
+        if thr is None:
+            colorscale = "RdBu_r"
+        else:
+            colorscale = cm.get_corr_thr_colorscale(threshold=thr, vmin=vmin)
+        return _heatmap_plotly(
+            corr,
+            title=corr_method_title,
+            colorscale=colorscale,
+            zmin=vmin,
+            zmax=1,
+            annot=annot,
+            fmt=fmt,
+            figsize=figsize,
+            **kwargs,
+        )
+
+    if thr is None:
+        cmap = "coolwarm"
+    else:
+        cmap = cm.get_corr_thr_cmap(threshold=thr, vmin=vmin)
+
+    # Create axes if not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
 
     sns.heatmap(
         corr,
@@ -517,6 +882,8 @@ def heatmap_corr(
 
     ax.set_title(corr_method_title)
 
+    return None
+
 
 def pvals_num(
         df,
@@ -532,6 +899,8 @@ def pvals_num(
         ax=None,
         color_signif="palegreen",
         color_non_signif="lightcoral",
+        engine=None,
+        fig_return=False,
         **kwargs,
 ):
     """
@@ -559,14 +928,22 @@ def pvals_num(
     annot_size : int, optional
        Font size for annotations.
     ax : matplotlib.axes.Axes, optional
-       Axis object to plot the heatmap.
+       Axis object to plot the heatmap. Ignored when ``engine="plotly"``.
+    engine : {"matplotlib", "plotly"} or None, default=None
+       The rendering engine. If None, the engine set by
+       :func:`pltstat.set_backend` is used.
+    fig_return : bool, default=False
+       If True, the figure is returned next to the p-values.
     **kwargs
-       Additional keyword arguments passed to seaborn heatmap.
+       Additional keyword arguments passed to the heatmap of the engine in
+       use, so they are engine specific.
 
     Returns
     -------
     DataFrame
-       A DataFrame containing p-values for pairwise correlations.
+       A DataFrame containing p-values for pairwise correlations. When
+       ``fig_return`` is True, the pair ``(DataFrame, figure)`` is returned;
+       the figure is None with matplotlib.
 
     Examples
     --------
@@ -594,10 +971,11 @@ def pvals_num(
     df_pvals = df_pvals.loc[num_cols1, num_cols2]
 
     # Plot dataframe:
-    _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
-                annot_size=annot_size, color_signif=color_signif, color_non_signif=color_non_signif, **kwargs)
+    fig = _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha,
+                      annot_rot=annot_rot, annot_size=annot_size, color_signif=color_signif,
+                      color_non_signif=color_non_signif, engine=engine, **kwargs)
 
-    return df_pvals
+    return _return_pvals(df_pvals, fig, fig_return)
 
 
 def pvals_cat(
@@ -614,6 +992,8 @@ def pvals_cat(
         ax=None,
         color_signif="palegreen",
         color_non_signif="lightcoral",
+        engine=None,
+        fig_return=False,
         **kwargs,
     ):
     """
@@ -641,14 +1021,22 @@ def pvals_cat(
     annot_size : int, optional
        Font size for annotations.
     ax : matplotlib.axes.Axes, optional
-       Axis object to plot the heatmap.
+       Axis object to plot the heatmap. Ignored when ``engine="plotly"``.
+    engine : {"matplotlib", "plotly"} or None, default=None
+       The rendering engine. If None, the engine set by
+       :func:`pltstat.set_backend` is used.
+    fig_return : bool, default=False
+       If True, the figure is returned next to the p-values.
     **kwargs
-       Additional keyword arguments passed to seaborn heatmap.
+       Additional keyword arguments passed to the heatmap of the engine in
+       use, so they are engine specific.
 
     Returns
     -------
     DataFrame
-       A DataFrame containing p-values for pairwise correlations.
+       A DataFrame containing p-values for pairwise correlations. When
+       ``fig_return`` is True, the pair ``(DataFrame, figure)`` is returned;
+       the figure is None with matplotlib.
 
     Examples
     --------
@@ -685,10 +1073,11 @@ def pvals_cat(
             df_pvals.loc[cat_col1, cat_col2] = p_value
 
     # Plot dataframe:
-    _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
-                annot_size=annot_size, color_signif=color_signif, color_non_signif=color_non_signif, **kwargs)
+    fig = _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha,
+                      annot_rot=annot_rot, annot_size=annot_size, color_signif=color_signif,
+                      color_non_signif=color_non_signif, engine=engine, **kwargs)
 
-    return df_pvals
+    return _return_pvals(df_pvals, fig, fig_return)
 
 
 def pvals_num_cat(
@@ -706,6 +1095,8 @@ def pvals_num_cat(
     ax=None,
     color_signif="palegreen",
     color_non_signif="lightcoral",
+    engine=None,
+    fig_return=False,
     **kwargs,
 ):
     """
@@ -740,13 +1131,22 @@ def pvals_num_cat(
         Font size for annotations.
     ax : matplotlib.axes.Axes, optional
         Axis object to plot the heatmap. If provided, `figsize` is ignored.
+        Ignored when ``engine="plotly"``.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
+    fig_return : bool, optional, default=False
+        If True, the figure is returned next to the p-values.
     **kwargs
-        Additional keyword arguments passed to seaborn heatmap.
+        Additional keyword arguments passed to the heatmap of the engine in
+        use, so they are engine specific.
 
     Returns
     -------
     DataFrame
         A DataFrame containing p-values for each numerical-categorical combination.
+        When ``fig_return`` is True, the pair ``(DataFrame, figure)`` is
+        returned; the figure is None with matplotlib.
 
     Examples
     --------
@@ -789,13 +1189,243 @@ def pvals_num_cat(
         "kruskal": "Kruskal-Wallis Test",
         "auto": "Auto Mann-Whitney U or Kruskal-Wallis Test"
     }[method]
-    _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha, annot_rot=annot_rot,
-                annot_size=annot_size, color_signif=color_signif, color_non_signif=color_non_signif, **kwargs)
+    fig = _plot_pvals(df_pvals, stat_method, figsize=figsize, fmt=fmt, annot=annot, ax=ax, alpha=alpha,
+                      annot_rot=annot_rot, annot_size=annot_size, color_signif=color_signif,
+                      color_non_signif=color_non_signif, engine=engine, **kwargs)
+
+    return _return_pvals(df_pvals, fig, fig_return)
+
+
+def _return_pvals(df_pvals, fig, fig_return):
+    """
+    Return the p-values of a heatmap, and its figure when it is asked for.
+
+    Parameters
+    ----------
+    df_pvals : pd.DataFrame
+        Matrix of p-values.
+    fig : plotly.graph_objects.Figure or None
+        Figure built by the plotly engine, or None with matplotlib.
+    fig_return : bool
+        If True, the figure is returned next to the p-values.
+
+    Returns
+    -------
+    df_pvals : pd.DataFrame
+        The matrix of p-values, when ``fig_return`` is False.
+    result : tuple
+        The pair ``(df_pvals, fig)``, when ``fig_return`` is True.
+
+    Notes
+    -----
+    The p-values are returned by default with either engine, so that the
+    documented return value of the ``pvals_*`` functions is unchanged. A
+    plotly figure which is not returned is displayed instead, unless
+    :func:`pltstat.config.set_auto_show` turned that off.
+    """
+    if fig_return:
+        return df_pvals, fig
+
+    if (fig is not None) and get_auto_show():
+        fig.show()
 
     return df_pvals
 
 
-def _plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=None, alpha=0.5, annot_rot=0, annot_size=None, color_signif="palegreen", color_non_signif="lightcoral", **kwargs):
+def _heatmap_plotly(data, title, colorscale, zmin, zmax, annot=True, fmt=".2f",
+                    figsize=None, annot_rot=0, annot_size=None, colorbar=None,
+                    gap=1, **kwargs):
+    """
+    Draw a heatmap of a DataFrame with plotly.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Matrix to draw, with the labels taken from its index and columns.
+    title : str
+        Title of the heatmap.
+    colorscale : str or list
+        Colorscale of the heatmap, as accepted by plotly.
+    zmin : float or None
+        Lowest value of the colorscale.
+    zmax : float or None
+        Highest value of the colorscale.
+    annot : bool, default: True
+        If True, every cell is annotated with its value.
+    fmt : str, default: ".2f"
+        Format of the annotations.
+    figsize : tuple or None, default: None
+        Size of the figure in inches, converted to pixels.
+    annot_rot : int, default: 0
+        Rotation of the tick labels of the x axis, in degrees.
+    annot_size : int or None, default: None
+        Font size of the annotations.
+    colorbar : dict or None, default: None
+        Settings of the colour bar, such as its ticks.
+    gap : int, default: 1
+        Width in pixels of the lines between the cells.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Heatmap``.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The heatmap.
+
+    Notes
+    -----
+    Plotly cannot rotate the text inside a cell, so ``annot_rot`` rotates the
+    tick labels of the x axis instead.
+    """
+    go, _ = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    heatmap = {
+        "z": data.values.astype(float),
+        "x": [str(column) for column in data.columns],
+        "y": [str(index) for index in data.index],
+        "zmin": zmin,
+        "zmax": zmax,
+        "colorscale": colorscale,
+        # Reproduce the lines drawn between the cells by seaborn
+        "xgap": gap,
+        "ygap": gap,
+        "hovertemplate": "%{y} / %{x}<br>%{z}<extra></extra>",
+    }
+    if colorbar is not None:
+        heatmap["colorbar"] = colorbar
+    if annot:
+        heatmap["text"] = cm.format_matrix(data.values, fmt)
+        heatmap["texttemplate"] = "%{text}"
+        heatmap["textfont"] = {"size": annot_size}
+
+    fig = go.Figure(go.Heatmap(**heatmap, **kwargs))
+    fig.update_layout(
+        title=title,
+        width=width,
+        height=height,
+        # Seaborn draws the first row at the top, plotly at the bottom
+        yaxis={"autorange": "reversed"},
+        xaxis={"tickangle": annot_rot},
+    )
+
+    return fig
+
+
+def _plot_pvals_plotly(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True,
+                       alpha=0.05, annot_rot=0, annot_size=None,
+                       color_signif="palegreen", color_non_signif="lightcoral", **kwargs):
+    """
+    Draw a heatmap of p-values with plotly.
+
+    Parameters
+    ----------
+    df_pvals : pd.DataFrame
+        Matrix of p-values.
+    stat_method : str
+        Name of the test which produced the p-values, used in the title.
+    figsize : tuple or None, default: None
+        Size of the figure in inches, converted to pixels.
+    fmt : str, default: ".2f"
+        Format of the annotations.
+    annot : bool, default: True
+        If True, every cell is annotated with its p-value.
+    alpha : float, default: 0.05
+        Significance level at which the colour changes.
+    annot_rot : int, default: 0
+        Rotation of the tick labels of the x axis, in degrees.
+    annot_size : int or None, default: None
+        Font size of the annotations.
+    color_signif : str, default: "palegreen"
+        Colour of the cells with a p-value below ``alpha``.
+    color_non_signif : str, default: "lightcoral"
+        Colour of the cells with a p-value at or above ``alpha``.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to ``plotly.graph_objects.Heatmap``.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The heatmap of p-values.
+    """
+    colorscale = cm.get_pval_thr_colorscale(
+        alpha=alpha, color_signif=color_signif, color_non_signif=color_non_signif
+    )
+
+    return _heatmap_plotly(
+        df_pvals,
+        title=f"{stat_method} p-value",
+        colorscale=colorscale,
+        zmin=0,
+        zmax=1,
+        annot=annot,
+        fmt=fmt,
+        figsize=figsize,
+        annot_rot=annot_rot,
+        annot_size=annot_size,
+        colorbar={"tickvals": [0.0, alpha, 1.0]},
+        **kwargs,
+    )
+
+
+def _plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=None, alpha=0.5,
+                annot_rot=0, annot_size=None, color_signif="palegreen",
+                color_non_signif="lightcoral", engine=None, **kwargs):
+    """
+    Draw a heatmap of p-values with the engine currently in use.
+
+    Parameters
+    ----------
+    df_pvals : pd.DataFrame
+        Matrix of p-values.
+    stat_method : str
+        Name of the test which produced the p-values, used in the title.
+    figsize : tuple or None, default: None
+        Size of the figure in inches. Ignored if ``ax`` is not None.
+    fmt : str, default: ".2f"
+        Format of the annotations.
+    annot : bool, default: True
+        If True, every cell is annotated with its p-value.
+    ax : matplotlib.axes.Axes or None, default: None
+        Axes to draw on. Ignored when ``engine="plotly"``.
+    alpha : float, default: 0.5
+        Significance level at which the colour changes.
+    annot_rot : int, default: 0
+        Rotation of the annotations, in degrees.
+    annot_size : int or None, default: None
+        Font size of the annotations.
+    color_signif : str, default: "palegreen"
+        Colour of the cells with a p-value below ``alpha``.
+    color_non_signif : str, default: "lightcoral"
+        Colour of the cells with a p-value at or above ``alpha``.
+    engine : {"matplotlib", "plotly"} or None, default: None
+        The rendering engine.
+    **kwargs : keyword arguments, optional
+        Additional arguments passed to the heatmap of the engine in use.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure or None
+        The figure when ``engine="plotly"``, else None.
+    """
+    engine = _resolve_engine(engine)
+
+    if engine == "plotly":
+        _warn_ignored_mpl_params(engine, ax=ax)
+        return _plot_pvals_plotly(
+            df_pvals,
+            stat_method,
+            figsize=figsize,
+            fmt=fmt,
+            annot=annot,
+            alpha=alpha,
+            annot_rot=annot_rot,
+            annot_size=annot_size,
+            color_signif=color_signif,
+            color_non_signif=color_non_signif,
+            **kwargs,
+        )
+
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=figsize)
 
@@ -807,18 +1437,17 @@ def _plot_pvals(df_pvals, stat_method, figsize=None, fmt=".2f", annot=True, ax=N
         cmap=cmap,
         norm=norm,
         annot=annot,
-        fmt=".2f",
+        fmt=fmt,
         linewidths=1,
         cbar_kws=cbar_kws,
         annot_kws={"rotation": annot_rot, "fontsize": annot_size},
         ax=ax,
         **kwargs,
     )
-    xticks = df_pvals.columns
-
-    # ax.set_xticks(np.arange(len(xticks)) + 0.5, xticks)
 
     ax.set_title(f"{stat_method} p-value")
+
+    return None
 
 
 def phik_corrs(
@@ -837,6 +1466,7 @@ def phik_corrs(
     njobs=-1,
     heatmap_kwargs=None,
     phik_kwargs=None,
+    engine=None,
 ):
     """
     Plot Heatmap with Phik correlations between specific x and y lists of columns.
@@ -871,15 +1501,20 @@ def phik_corrs(
         Font size for the annotations. Default is None.
     ax : matplotlib.axes.Axes or None, optional, default=None
         The axes on which to draw the plot. If None, a new figure and axes are created.
+        Ignored when ``engine="plotly"``.
     bins : int, optional
         Number of bins to use for discretizing continuous variables. Default is 10.
     njobs : int, optional
         Number of parallel jobs to use for the Phik calculation.
         Default is -1, which uses all available processors.
     heatmap_kwargs : dict, optional
-        Additional keyword arguments to pass to `sns.heatmap` for customization of the heatmap.
+        Additional keyword arguments to pass to the heatmap of the engine in
+        use, so they are engine specific.
     phik_kwargs : dict, optional
         Additional keyword arguments to pass to the `phik_matrix` function for Phik calculation.
+    engine : {"matplotlib", "plotly"} or None, optional, default=None
+        The rendering engine. If None, the engine set by
+        :func:`pltstat.set_backend` is used.
 
     Returns
     -------
@@ -905,10 +1540,10 @@ def phik_corrs(
     >>> phik_corrs(df, x=x, y=y, figsize=(8, 6))
     """
 
+    engine = _resolve_engine(engine)
     phik_kwargs = phik_kwargs or {}
     heatmap_kwargs = heatmap_kwargs or {}
 
-    cmap = cm.get_corr_thr_cmap(threshold=threshold, vmin=0)
     if (x is not None) and (y is not None):
         xy = np.concatenate((x, y))
         xy = np.unique(xy)
@@ -916,6 +1551,24 @@ def phik_corrs(
         df_phik = df_phik.loc[y, x]
     else:
         df_phik = df.phik_matrix(interval_cols=interval_cols, bins=bins, njobs=njobs, **phik_kwargs)
+
+    if engine == "plotly":
+        _warn_ignored_mpl_params(engine, ax=ax)
+        return _heatmap_plotly(
+            df_phik,
+            title="Phi Coefficient (phik)",
+            colorscale=cm.get_corr_thr_colorscale(threshold=threshold, vmin=0),
+            zmin=0,
+            zmax=1,
+            annot=annot,
+            fmt=fmt,
+            figsize=figsize,
+            annot_rot=annot_rot,
+            annot_size=annot_size,
+            **heatmap_kwargs,
+        )
+
+    cmap = cm.get_corr_thr_cmap(threshold=threshold, vmin=0)
 
     # Create axes if not provided
     if ax is None:
@@ -932,6 +1585,8 @@ def phik_corrs(
         ax=ax,
         **heatmap_kwargs,
     )
+
+    return None
 
 
 # def r_pval(

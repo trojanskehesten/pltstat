@@ -8,6 +8,8 @@ from matplotlib import ticker
 import numpy as np
 import seaborn as sns
 
+from .config import _figsize_to_px, _import_plotly, _resolve_engine, _warn_ignored_mpl_params
+
 
 _HIGH = 24
 _N_BINS = 24
@@ -77,8 +79,175 @@ def val2rad(a, high=_HIGH):
     return a
 
 
+def _hist_yticks(a, bins):
+    """
+    Get the radial ticks matplotlib chooses for a circular histogram.
+
+    Parameters
+    ----------
+    a : array_like
+        Input array in radians.
+    bins : array_like
+        Edges of the bins, in radians.
+
+    Returns
+    -------
+    yticks : np.ndarray
+        Positions of the radial ticks, before any offset is added.
+
+    Notes
+    -----
+    The ticks are read from a throwaway polar figure, which is closed right
+    away. Matplotlib pads the radial axis past the tallest bin in a way that
+    a locator alone does not reproduce, so drawing is the reliable way to get
+    the very same ticks with either engine.
+    """
+    fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+    ax.hist(a, bins=bins, edgecolor="black")
+    yticks = ax.axes.yaxis.get_ticklocs()
+    plt.close(fig)
+
+    return yticks
+
+
+def _hist_plotly(counts, bins, theta, yticks, bottom, high, title, figsize=None):
+    """
+    Draw a circular histogram with plotly.
+
+    Parameters
+    ----------
+    counts : np.ndarray
+        Number of observations in every bin.
+    bins : np.ndarray
+        Edges of the bins, in radians.
+    theta : np.ndarray
+        Positions of the ticks of the angular axis, in radians.
+    yticks : np.ndarray
+        Positions of the radial ticks, before the offset is added.
+    bottom : float
+        Radial offset of the bins, which hollows the centre of the circle.
+    high : float or int
+        High boundary of the sample range, used to label the angular axis.
+    title : str or None
+        Title of the chart.
+    figsize : tuple or None, default: None
+        Size of the figure in inches, converted to pixels.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The circular histogram.
+
+    Notes
+    -----
+    Plotly measures the angles in degrees while matplotlib uses radians, so
+    the angles are converted here. Setting the angular axis to start at the
+    top and to run clockwise matches ``theta_offset`` and ``theta_direction``
+    of matplotlib.
+    """
+    go, _ = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    centers = (bins[:-1] + bins[1:]) / 2
+
+    fig = go.Figure(
+        go.Barpolar(
+            r=counts,
+            theta=np.degrees(centers),
+            width=np.degrees(np.diff(bins)),
+            base=bottom,
+            marker={"line": {"color": "black", "width": 1}},
+            hovertemplate="count = %{r}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=title,
+        width=width,
+        height=height,
+        polar={
+            "angularaxis": {
+                "rotation": 90,
+                "direction": "clockwise",
+                "tickmode": "array",
+                "tickvals": np.degrees(theta),
+                "ticktext": [f"{value / np.pi / 2 * high:.3g}" for value in theta],
+            },
+            "radialaxis": {
+                "tickmode": "array",
+                "tickvals": yticks + bottom,
+                "ticktext": [f"{value:g}" for value in yticks],
+            },
+        },
+    )
+
+    return fig
+
+
+def _scatter_plotly(rads, y, theta, high, title, y_range, figsize=None):
+    """
+    Draw a scatter plot of a circular dataset with plotly.
+
+    Parameters
+    ----------
+    rads : np.ndarray
+        Angle of every point, in radians.
+    y : array_like
+        Radius of every point.
+    theta : np.ndarray
+        Positions of the ticks of the angular axis, in radians.
+    high : float or int
+        High boundary of the sample range, used to label the angular axis.
+    title : str or None
+        Title of the chart.
+    y_range : tuple[float, float]
+        Lowest and highest radius drawn, which pads the points.
+    figsize : tuple or None, default: None
+        Size of the figure in inches, converted to pixels.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        The scatter plot.
+
+    Notes
+    -----
+    Plotly measures the angles in degrees while matplotlib uses radians, so
+    the angles are converted here.
+    """
+    go, _ = _import_plotly()
+    width, height = _figsize_to_px(figsize)
+
+    fig = go.Figure(
+        go.Scatterpolar(
+            r=y,
+            theta=np.degrees(rads),
+            mode="markers",
+            hovertemplate="%{r}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=title,
+        width=width,
+        height=height,
+        showlegend=False,
+        polar={
+            "angularaxis": {
+                "rotation": 90,
+                "direction": "clockwise",
+                "tickmode": "array",
+                "tickvals": np.degrees(theta),
+                "ticktext": [f"{value / np.pi / 2 * high:.3g}" for value in theta],
+            },
+            "radialaxis": {"range": list(y_range)},
+        },
+    )
+
+    return fig
+
+
 def hist(
-    a, n_bins=_N_BINS, high=_HIGH, bottom=0.1, title=None, figsize=None, ax=None, return_ax=False, **kwargs,
+    a, n_bins=_N_BINS, high=_HIGH, bottom=0.1, title=None, figsize=None, ax=None, return_ax=False,
+    engine=None, **kwargs,
 ):
     if n_bins < 2:
         raise ValueError("Received an invalid number of bins. Number of bins must be at least 2, and must be an int.")
@@ -90,21 +259,27 @@ def hist(
         rad_x = x / np.pi / 2
         return f"{(rad_x * high):.3g}"
 
+    engine = _resolve_engine(engine)
+
     theta = np.linspace(0, 2 * np.pi, n_bins, endpoint=False)
     bins = np.linspace(0, 2 * np.pi, n_bins + 1, endpoint=True)
+
+    counts = np.histogram(a, bins=bins, **kwargs)[0]
+    max_bin = counts.max()
+    bottom = max_bin * bottom
+
+    # get yticks:
+    yticks = _hist_yticks(a, bins)
+
+    if engine == "plotly":
+        _warn_ignored_mpl_params(engine, ax=ax, return_ax=return_ax)
+        return _hist_plotly(
+            counts, bins, theta, yticks, bottom, high, title, figsize=figsize
+        )
 
     if ax is None:
         fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=figsize)
         # ax = plt.subplot(111, polar=True)
-
-    max_bin = np.histogram(a, bins=bins, **kwargs)[0].max()
-    bottom = max_bin * bottom
-
-    # get yticks:
-    fig, ax2 = plt.subplots(subplot_kw={"projection": "polar"})
-    ax2.hist(a, bins=bins, edgecolor="black")
-    yticks = ax2.axes.yaxis.get_ticklocs()
-    plt.close(fig)
 
     ax.hist(a, bins=bins, edgecolor="black", bottom=bottom, **kwargs)
 
@@ -120,6 +295,8 @@ def hist(
     ax.set_title(title)
     if return_ax:
         return ax
+
+    return None
 
 
 hist.__doc__ = """\
@@ -145,13 +322,18 @@ ax : :class:`matplotlib.axes.Axes` or array of Axes or None, default: None
    Axes object to draw the plot onto, otherwise uses the current Axes. If ``ax`` is None, create nex ``ax``.
 return_ax : bool, default: False
     Show, it is necessary to return ``ax``.
+    Ignored when ``engine="plotly"``, which always returns the figure.
+engine : {{"matplotlib", "plotly"}} or None, default: None
+    The rendering engine. If None, the engine set by
+    :func:`pltstat.set_backend` is used.
 kwargs : key, value mappings
     Other keywords arguments are passed down to :meth:`maptplotlib.axes.Axes.hist`.
 
 Returns
 -------
-ax : :class:`matplotlib.axes.Axes` or array of Axes
+ax : :class:`matplotlib.axes.Axes` or array of Axes or :class:`plotly.graph_objects.Figure`
     Returns the Axes object with the plot drawn onto it if ``return_ax argument`` is ``True``.
+    Returns the plotly Figure when ``engine="plotly"``.
 
 Example
 --------
@@ -273,7 +455,8 @@ std.__doc__ = """\
 
 
 def scatter(
-    deg, y, high=_HIGH, n_ticks=_N_TICKS, title=None, figsize=None, ax=None, return_ax=False, **kwargs
+    deg, y, high=_HIGH, n_ticks=_N_TICKS, title=None, figsize=None, ax=None, return_ax=False,
+    engine=None, **kwargs
 ):
     BOTTOM_EDGE = 0.2
     UPPER_EDGE = 0.1
@@ -286,15 +469,22 @@ def scatter(
         rad_x = x / np.pi / 2
         return f"{(rad_x * high):.3g}"
 
-    if ax is None:
-        fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=figsize)
+    engine = _resolve_engine(engine)
 
     y_max = max(y)
     y_min = min(y)
     y_diff = y_max - y_min
+    y_range = (y_min - y_diff * BOTTOM_EDGE, y_max + y_diff * UPPER_EDGE)
+
+    if engine == "plotly":
+        _warn_ignored_mpl_params(engine, ax=ax, return_ax=return_ax)
+        return _scatter_plotly(rads, y, theta, high, title, y_range, figsize=figsize)
+
+    if ax is None:
+        fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=figsize)
 
     sns.scatterplot(x=rads, y=y, ax=ax, **kwargs)
-    ax.set_ylim((y_min - y_diff * BOTTOM_EDGE, y_max + y_diff * UPPER_EDGE))
+    ax.set_ylim(y_range)
 
     # arrange graph
     ax.set(
@@ -308,6 +498,8 @@ def scatter(
     ax.set_title(title)
     if return_ax:
         return ax
+
+    return None
 
 
 scatter.__doc__ = """\
@@ -327,6 +519,10 @@ ax : :class:`matplotlib.axes.Axes` or array of Axes or None, default: None
    Axes object to draw the plot onto, otherwise uses the current Axes. If ``ax`` is None, create nex ``ax``.
 return_ax : bool, default: False
     Show, it is necessary to return ``ax``.
+    Ignored when ``engine="plotly"``, which always returns the figure.
+engine : {{"matplotlib", "plotly"}} or None, default: None
+    The rendering engine. If None, the engine set by
+    :func:`pltstat.set_backend` is used.
 kwargs : key, value mappings
     Other keywords arguments are passed down to :meth:`seaborn.scatterplot`.
 

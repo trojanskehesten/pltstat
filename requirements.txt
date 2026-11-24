@@ -6,3 +6,4 @@ umap-learn~=0.5.7
 scipy~=1.15.2
 scikit-learn~=1.6.0
 phik~=0.12.4
+plotly~=6.0
