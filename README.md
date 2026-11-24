@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/pltstat.svg)](https://pypi.org/project/pltstat/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pltstat.svg)](https://pypi.org/project/pltstat/)
 [![Tests](https://github.com/trojanskehesten/pltstat/actions/workflows/tests.yml/badge.svg)](https://github.com/trojanskehesten/pltstat/actions/workflows/tests.yml)
-[![License](https://img.shields.io/github/license/trojanskehesten/pltstat.svg)](LICENSE)
+[![License](https://img.shields.io/github/license/trojanskehesten/pltstat.svg)](https://github.com/trojanskehesten/pltstat/blob/main/LICENSE)
 [![GitHub last commit](https://img.shields.io/github/last-commit/trojanskehesten/pltstat.svg)](https://github.com/trojanskehesten/pltstat)
 
 `pltstat` is a Python library designed to facilitate the visualization of statistical data analysis. This library includes a variety of tools and methods to streamline data exploration, statistical computation, and graphical representation.
@@ -33,7 +33,7 @@ To install the `pltstat` library, simply run the following command:
 pip install pltstat
 ```
 
-This will install the library along with all the required dependencies as specified in the [`requirements.txt`](requirements.txt) file.
+This will install the library along with all the required dependencies as specified in the [`requirements.txt`](https://github.com/trojanskehesten/pltstat/blob/main/requirements.txt) file.
 
 After installation the package, you can start using `pltstat` by importing the necessary modules in your Python scripts.
 
@@ -43,40 +43,43 @@ After installation the package, you can start using `pltstat` by importing the n
 
 ### Python Modules
 
-- **[`__init__.py`](pltstat/__init__.py)**
+- **[`__init__.py`](https://github.com/trojanskehesten/pltstat/blob/main/pltstat/__init__.py)**
   - Marks the directory as a Python package. This file allows you to import modules from the `pltstat` package.
 
-- **[`singlefeat.py`](pltstat/singlefeat.py)**
+- **[`config.py`](https://github.com/trojanskehesten/pltstat/blob/main/pltstat/config.py)**
+  - Manages the global rendering engine selection (`matplotlib` or `plotly`) through `set_backend`, `get_backend`, and the `backend` context manager.
+
+- **[`singlefeat.py`](https://github.com/trojanskehesten/pltstat/blob/main/pltstat/singlefeat.py)**
   - Dedicated to the analysis and visualization of single-variable features, including plotting functions such as pie charts, count plots, and histograms.
 
-- **[`twofeats.py`](pltstat/twofeats.py)**
+- **[`twofeats.py`](https://github.com/trojanskehesten/pltstat/blob/main/pltstat/twofeats.py)**
   - Provides tools for analyzing interactions between two features. Includes functions for creating crosstabs, computing correlations, and visualizing results using violin plots, boxplots, and distribution box plots. These functions also display p-values and other statistical metrics to summarize relationships between the two features.
 
-- **[`multfeats.py`](pltstat/multfeats.py)**
+- **[`multfeats.py`](https://github.com/trojanskehesten/pltstat/blob/main/pltstat/multfeats.py)**
   - Provides tools for analyzing relationships between multiple features.  
   Includes visualization functions for analyzing missing data, comparing distributions, and visualizing dimensionality reductions. Additionally, it provides methods for creating heatmaps that display correlations and p-values, including Spearman's correlation, Mann-Whitney p-values, and Phik correlations.
 
-- **[`circle.py`](pltstat/circle.py)**
+- **[`circle.py`](https://github.com/trojanskehesten/pltstat/blob/main/pltstat/circle.py)**
   - Contains functions and methods related to circular statistical visualizations, such as radar charts or circular histograms.
 
-- **[`cm.py`](pltstat/cm.py)**
+- **[`cm.py`](https://github.com/trojanskehesten/pltstat/blob/main/pltstat/cm.py)**
   - Contains custom colormap utilities for visualizations, such as rendering correlation matrices or creating two-colored maps for p-values with a threshold (e.g., alpha).
 
-- **[`stat_methods.py`](pltstat/corr_methods.py)**
+- **[`stat_methods.py`](https://github.com/trojanskehesten/pltstat/blob/main/pltstat/stat_methods.py)**
   - Includes methods for calculating correlation matrices and related statistical relationships.
 
-- **[`in_out.py`](pltstat/in_out.py)**
+- **[`in_out.py`](https://github.com/trojanskehesten/pltstat/blob/main/pltstat/in_out.py)**
   - Provides utilities for reading, writing, and preprocessing input and output data files.
 
 ### Other Files
 
-- **[`.gitignore`](.gitignore)**
+- **[`.gitignore`](https://github.com/trojanskehesten/pltstat/blob/main/.gitignore)**
   - Specifies intentionally untracked files to ignore in the repository, such as virtual environments and temporary files.
 
 - **`README.md`**
   - This file provides an overview of the project, including file descriptions and usage instructions.
 
-- **[`requirements.txt`](requirements.txt)**
+- **[`requirements.txt`](https://github.com/trojanskehesten/pltstat/blob/main/requirements.txt)**
   - Lists the Python dependencies required to run the library. Install them using:
     ```bash
     pip install -r requirements.txt
@@ -172,7 +175,7 @@ df = pd.DataFrame(data)
 sf.pie(df["A/B Test Group"])
 ```
 **Result 1**  
-<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.10.1/docs/pie_plot.png" alt="Pie plot example" width="200"/>
+<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.11.0/docs/pie_plot.png" alt="Pie plot example" width="200"/>
 
 ### Example 2: Boxplot  
 ```python
@@ -195,7 +198,7 @@ df = pd.DataFrame(data)
 tf.boxplot(df, "gender", "age")
 ```
 **Result 2**  
-<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.10.1/docs/boxplot.png" alt="Distribution boxplot example" width="800"/>
+<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.11.0/docs/boxplot.png" alt="Distribution boxplot example" width="800"/>
 
 ### Example 3: Boxplot and Distribution Plot
 ```python
@@ -214,7 +217,7 @@ df = pd.DataFrame({
 tf.dis_box_plot(df, cat_feat='category', num_feat='value')
 ```
 **Result 3**  
-<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.10.1/docs/dis_box_plot.png" alt="Distribution boxplot example" width="800"/>
+<img src="https://raw.githubusercontent.com/trojanskehesten/pltstat/v0.11.0/docs/dis_box_plot.png" alt="Distribution boxplot example" width="800"/>
 
 ---
 
@@ -228,4 +231,4 @@ Contributions are welcome! If you'd like to improve the library or fix issues, p
 ---
 
 ## License
-This project is licensed under the BSD 3-Clause License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the BSD 3-Clause License. See the [LICENSE](https://github.com/trojanskehesten/pltstat/blob/main/LICENSE) file for details.

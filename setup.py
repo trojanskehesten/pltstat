@@ -51,6 +51,12 @@ setup(
 
     url="https://github.com/trojanskehesten/pltstat",
     download_url=f"https://github.com/trojanskehesten/pltstat/archive/refs/tags/v{version}.zip",
+    project_urls={
+        "Homepage": "https://github.com/trojanskehesten/pltstat",
+        "Source": "https://github.com/trojanskehesten/pltstat",
+        "Changelog": "https://github.com/trojanskehesten/pltstat/blob/main/CHANGELOG.md",
+        "Issues": "https://github.com/trojanskehesten/pltstat/issues",
+    },
 
     license="BSD 3-Clause License, see LICENSE file",
 
@@ -61,7 +67,7 @@ setup(
     python_requires=">=3.10",
     include_package_data=True,  # Reading Manifest.in
 
-    keywords = "matplotlib, plotly, statistics, visualization, dataanalysis",
+    keywords="matplotlib, plotly, statistics, visualization, dataanalysis",
 
     classifiers=[
         "Development Status :: 4 - Beta",  # "5 - Production/Stable"

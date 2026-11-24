@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.11.0] - 2026-08-30
+## [0.11.0] - 2026-11-24
 ### Added
 - Dual rendering engine: every plotting function can now draw with matplotlib
   (the default) or with plotly.
@@ -28,6 +28,8 @@ All notable changes to this project will be documented in this file.
 - A continuous integration workflow which runs the suite on every supported
   Python version, on Linux, Windows and macOS, and on the lowest dependency
   versions the package declares.
+- Automated PyPI publishing workflow using Trusted Publishing (OIDC) with wheel
+  and source distributions and PEP 740 provenance attestations.
 
 ### Changed
 - Dependency bounds are now a floor and a major version cap instead of

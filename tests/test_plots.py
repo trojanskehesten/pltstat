@@ -49,8 +49,20 @@ class TestSingleFeat:
     def test_countplot(self, df, engine):
         assert_rendered(sf.countplot(df["cat2"], engine=engine), engine)
 
+    def test_countplot_groups_many_categories(self, engine):
+        """Categories beyond the threshold are grouped into 'Other'."""
+        categories = [f"cat_{i}" for i in range(25) for _ in range(25 - i)]
+        series = pd.Series(categories, name="many_cats")
+        result = sf.countplot(series, engine=engine)
+        assert_rendered(result, engine)
+        if engine == "plotly":
+            assert "Other" in result.data[0].x
+
     def test_histplot(self, df, engine):
         assert_rendered(sf.histplot(df["num1"], engine=engine), engine)
+
+    def test_histplot_show_mode(self, df, engine):
+        assert_rendered(sf.histplot(df["num1"], show_mode=True, engine=engine), engine)
 
     def test_histplot_without_kde(self, df, engine):
         assert_rendered(sf.histplot(df["num1"], kde=False, engine=engine), engine)
@@ -127,6 +139,17 @@ class TestMultFeats:
         result = mf.dist_qq_plot(df[num_cols], (10, 6), engine=engine)
         assert result is not None
 
+    def test_dist_qq_plot_fig_return(self, df, num_cols, engine):
+        shapiros, fig = mf.dist_qq_plot(
+            df[num_cols], (10, 6), fig_return=True, engine=engine
+        )
+        assert len(shapiros) == len(num_cols)
+        if engine == "plotly":
+            assert_rendered(fig, engine)
+        else:
+            assert fig is None
+            assert plt.get_fignums()
+
     def test_heatmap_corr(self, df, num_cols, engine):
         assert_rendered(mf.heatmap_corr(df[num_cols], engine=engine), engine)
 
@@ -144,13 +167,39 @@ class TestMultFeats:
         result = mf.pvals_num(df[num_cols], engine=engine)
         assert isinstance(result, pd.DataFrame)
 
+    def test_pvals_num_fig_return(self, df, num_cols, engine):
+        pvals, fig = mf.pvals_num(df[num_cols], fig_return=True, engine=engine)
+        assert isinstance(pvals, pd.DataFrame)
+        if engine == "plotly":
+            assert_rendered(fig, engine)
+        else:
+            assert fig is None
+
     def test_pvals_cat(self, df, cat_cols, engine):
         result = mf.pvals_cat(df[cat_cols], engine=engine)
         assert isinstance(result, pd.DataFrame)
 
+    def test_pvals_cat_fig_return(self, df, cat_cols, engine):
+        pvals, fig = mf.pvals_cat(df[cat_cols], fig_return=True, engine=engine)
+        assert isinstance(pvals, pd.DataFrame)
+        if engine == "plotly":
+            assert_rendered(fig, engine)
+        else:
+            assert fig is None
+
     def test_pvals_num_cat(self, df, engine):
         result = mf.pvals_num_cat(df, ["cat1", "cat2"], ["num1", "num2"], engine=engine)
         assert isinstance(result, pd.DataFrame)
+
+    def test_pvals_num_cat_fig_return(self, df, engine):
+        pvals, fig = mf.pvals_num_cat(
+            df, ["cat1", "cat2"], ["num1", "num2"], fig_return=True, engine=engine
+        )
+        assert isinstance(pvals, pd.DataFrame)
+        if engine == "plotly":
+            assert_rendered(fig, engine)
+        else:
+            assert fig is None
 
     def test_pvals_num_cat_transposed(self, df, engine):
         result = mf.pvals_num_cat(
@@ -207,3 +256,17 @@ class TestMatplotlibOnly:
         assert ax.patches or ax.texts
         assert isinstance(fig, Figure)
         assert isinstance(ax, Axes)
+
+
+class TestPlotlyOnly:
+    """Behaviour specific to the plotly engine."""
+
+    def test_plotly_warns_when_ax_is_passed(self, df, engine):
+        """Passing ``ax`` to the plotly engine emits a warning and still draws."""
+        if engine != "plotly":
+            pytest.skip("`ax` warning is specific to the plotly engine")
+
+        _, ax = plt.subplots()
+        with pytest.warns(UserWarning, match="ignored"):
+            result = sf.pie(df["cat2"], ax=ax, engine="plotly")
+        assert_rendered(result, engine)
