@@ -2,5 +2,6 @@ include README.md
 include CHANGELOG.md
 include LICENSE
 include requirements.txt
-include .gitignore
-include docs
+
+# The test suite is a development and CI aid, not part of the distribution
+prune tests
